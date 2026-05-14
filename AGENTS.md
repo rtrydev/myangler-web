@@ -49,3 +49,13 @@ When a real gap exists:
 - Keep the API minimal: do not add props that only one consumer needs.
 
 `npm test` must stay green; tests query by role/label/text and assert on user-perceivable outcomes (see the existing tests for the pattern).
+
+# Python work
+
+For any Python-related work, always use the virtual environment located in the `venv/` directory at the root of the repo. If `venv/` does not exist, create it first with:
+
+```
+python -m venv venv
+```
+
+Then activate it (`source venv/bin/activate`) before installing packages or running Python scripts. Never invoke the system Python directly for project work.

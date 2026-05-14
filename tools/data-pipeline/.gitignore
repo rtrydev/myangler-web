@@ -1,0 +1,9 @@
+# Built artifacts produced by the pipeline. Re-generated on demand;
+# never commit.
+build/
+
+# Python packaging / tooling cruft.
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
