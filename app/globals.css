@@ -1,26 +1,329 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────
+   Design tokens — parchment + lacquer + saffron palette
+   ───────────────────────────────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light */
+  --bg: #F1E8D2;
+  --bg-2: #EADFC2;
+  --paper: #FBF5E4;
+  --surface: #FFFDF5;
+  --surface-2: #F6ECD4;
+  --ink: #241509;
+  --ink-2: #5A4329;
+  --ink-3: #8A7250;
+  --ink-faint: #B8A682;
+  --gold: #B07820;
+  --gold-soft: #D9A94A;
+  --ruby: #8A2727;
+  --ruby-soft: #B14545;
+  --jade: #4F6B4D;
+  --border: rgba(36, 21, 9, 0.10);
+  --border-2: rgba(36, 21, 9, 0.16);
+  --shadow: 0 1px 2px rgba(36, 21, 9, 0.04), 0 8px 24px -8px rgba(36, 21, 9, 0.12);
+  --shadow-lg: 0 2px 4px rgba(36, 21, 9, 0.06), 0 24px 48px -12px rgba(36, 21, 9, 0.22);
+  --modal-dim: rgba(60, 40, 18, 0.36);
+  --modal-shadow: 0 -18px 44px -10px rgba(36, 21, 9, 0.22);
 }
 
+.dark {
+  /* Dark */
+  --bg: #16100A;
+  --bg-2: #1E1610;
+  --paper: #221913;
+  --surface: #2A1F16;
+  --surface-2: #34281C;
+  --ink: #EFE2C2;
+  --ink-2: #C8B68C;
+  --ink-3: #948266;
+  --ink-faint: #5E513C;
+  --gold: #D9A94A;
+  --gold-soft: #E8C170;
+  --ruby: #C75555;
+  --ruby-soft: #D97777;
+  --jade: #8AA786;
+  --border: rgba(239, 226, 194, 0.10);
+  --border-2: rgba(239, 226, 194, 0.18);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 48px -12px rgba(0, 0, 0, 0.7);
+  --modal-dim: rgba(6, 3, 1, 0.62);
+  --modal-shadow: 0 -20px 56px -12px rgba(0, 0, 0, 0.7);
+}
+
+/* Accent remap — apply to a wrapper [data-accent] element to swap the primary hue */
+[data-accent="gold"]    { --ruby: var(--gold);   --ruby-soft: var(--gold-soft); }
+[data-accent="jade"]    { --ruby: var(--jade);   --ruby-soft: var(--jade); }
+[data-accent="indigo"]  { --ruby: #4F5B8B;       --ruby-soft: #7079A8; }
+.dark[data-accent="indigo"] { --ruby: #8088B8; --ruby-soft: #A8AED4; }
+
+/* Tailwind theme — register tokens as utilities */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-faint: var(--ink-faint);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-ruby: var(--ruby);
+  --color-ruby-soft: var(--ruby-soft);
+  --color-jade: var(--jade);
+  --color-border: var(--border);
+  --color-border-2: var(--border-2);
+
+  --font-serif: var(--font-spectral), 'Cormorant Garamond', Georgia, serif;
+  --font-mm: var(--font-noto-mm), 'Padauk', serif;
+  --font-ui: var(--font-dm-sans), -apple-system, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --font-sans: var(--font-dm-sans), -apple-system, system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ─────────────────────────────────────────────────────────────
+   Base typography classes
+   ───────────────────────────────────────────────────────────── */
+
+.serif { font-family: var(--font-spectral), 'Cormorant Garamond', Georgia, serif; }
+.mm    { font-family: var(--font-noto-mm), 'Padauk', serif; }
+.ui    { font-family: var(--font-dm-sans), -apple-system, system-ui, sans-serif; }
+.mono  { font-family: var(--font-jetbrains), ui-monospace, monospace; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-dm-sans), -apple-system, system-ui, sans-serif;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Reusable surface utilities
+   ───────────────────────────────────────────────────────────── */
+
+.paper-tex {
+  position: relative;
+}
+.paper-tex::before {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(176, 120, 32, 0.04) 0, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(138, 39, 39, 0.03) 0, transparent 45%);
+}
+.dark .paper-tex::before {
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(217, 169, 74, 0.06) 0, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(199, 85, 85, 0.04) 0, transparent 45%);
+}
+
+.no-scroll::-webkit-scrollbar { display: none; }
+.no-scroll { scrollbar-width: none; }
+
+.hairline { border-top: 1px solid var(--border); }
+.hairline-b { border-bottom: 1px solid var(--border); }
+
+.rule-gold {
+  background: linear-gradient(90deg, transparent, var(--gold) 20%, var(--gold) 80%, transparent);
+  height: 1px; width: 100%;
+  opacity: 0.4;
+}
+
+.ornament {
+  width: 18px; height: 18px;
+  border: 1px solid var(--gold);
+  position: relative;
+  opacity: 0.6;
+}
+.ornament::before, .ornament::after {
+  content: ''; position: absolute; background: var(--gold);
+}
+.ornament::before { width: 1px; height: 6px; left: 50%; top: -3px; transform: translateX(-50%); }
+.ornament::after  { width: 6px; height: 1px; top: 50%; left: -3px; transform: translateY(-50%); }
+
+/* ─────────────────────────────────────────────────────────────
+   Chip / Tag
+   ───────────────────────────────────────────────────────────── */
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font-family: var(--font-dm-sans), sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  border: 1px solid var(--border-2);
+  color: var(--ink-2);
+  background: var(--surface);
+}
+.chip-solid {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.tag-exact {
+  color: var(--ruby);
+  background: color-mix(in oklab, var(--ruby) 8%, var(--surface));
+  border-color: color-mix(in oklab, var(--ruby) 25%, transparent);
+}
+.tag-partial {
+  color: var(--gold);
+  background: color-mix(in oklab, var(--gold) 8%, var(--surface));
+  border-color: color-mix(in oklab, var(--gold) 25%, transparent);
+}
+.tag-fuzzy {
+  color: var(--ink-3);
+  background: var(--surface);
+  border-style: dashed;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Search input
+   ───────────────────────────────────────────────────────────── */
+
+.search-input {
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  padding: 14px 14px 14px 42px;
+  font-family: var(--font-spectral), serif;
+  font-size: 16px;
+  color: var(--ink);
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.search-input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--gold) 18%, transparent);
+}
+.search-input::placeholder {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Word block — used for sentence breakdown
+   ───────────────────────────────────────────────────────────── */
+
+.wblock {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-bottom: 2px solid var(--gold);
+  padding: 12px 10px 10px;
+  border-radius: 4px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px;
+  min-width: 60px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.wblock:hover {
+  background: var(--surface);
+  border-bottom-color: var(--ruby);
+  transform: translateY(-1px);
+}
+.wblock.selected {
+  background: var(--surface);
+  border-bottom-color: var(--ruby);
+  box-shadow: var(--shadow);
+}
+.wblock .w-mm {
+  font-family: var(--font-noto-mm), serif;
+  font-size: 20px;
+  color: var(--ink);
+  line-height: 1;
+}
+.wblock .w-en {
+  font-family: var(--font-spectral), serif;
+  font-style: italic;
+  font-size: 11px;
+  color: var(--ink-3);
+  text-align: center;
+  line-height: 1.2;
+}
+.wblock.unknown {
+  border-bottom-color: var(--ink-faint);
+  border-bottom-style: dashed;
+}
+.wblock.unknown .w-en { color: var(--ink-faint); }
+
+/* ─────────────────────────────────────────────────────────────
+   Result row
+   ───────────────────────────────────────────────────────────── */
+
+.result-row {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+}
+.result-row:hover { background: var(--surface); }
+
+/* ─────────────────────────────────────────────────────────────
+   Buttons
+   ───────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font-dm-sans), sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  padding: 12px 16px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: filter 0.15s, background 0.15s, border-color 0.15s;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary {
+  background: var(--ruby);
+  color: var(--paper);
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.05); }
+.btn-secondary {
+  background: var(--surface);
+  color: var(--ink-2);
+  border-color: var(--border-2);
+}
+.btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-3);
+}
+.btn-ghost:hover:not(:disabled) { color: var(--ink); background: color-mix(in oklab, var(--ink) 4%, transparent); }
+.btn-icon {
+  width: 40px; height: 40px;
+  padding: 0;
+  background: var(--surface);
+  color: var(--ink-2);
+  border: 1px solid var(--border-2);
+}
+.btn-icon:hover:not(:disabled) { background: var(--surface-2); }
+
+/* ─────────────────────────────────────────────────────────────
+   Card / Sheet
+   ───────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Eyebrow label (small uppercase caption)
+   ───────────────────────────────────────────────────────────── */
+
+.eyebrow {
+  font-family: var(--font-dm-sans), sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.eyebrow-gold { color: var(--gold); }
