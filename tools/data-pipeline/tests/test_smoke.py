@@ -97,6 +97,8 @@ def test_load_subcommand_reports_counts(tmp_path: Path) -> None:
 
 
 def test_stub_subcommand_succeeds_and_creates_output_dir(tmp_path: Path) -> None:
+    # merge-g2p and convert-ngram remain stubs in this task and do not
+    # require a real input file.
     out_dir = tmp_path / "build"
     result = subprocess.run(
         [
@@ -107,7 +109,7 @@ def test_stub_subcommand_succeeds_and_creates_output_dir(tmp_path: Path) -> None
             str(tmp_path / "ignored.jsonl"),
             "--output-dir",
             str(out_dir),
-            "strip",
+            "merge-g2p",
         ],
         capture_output=True,
         text=True,

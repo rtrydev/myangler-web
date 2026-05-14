@@ -1,9 +1,9 @@
 """Centralized configuration for the data pipeline.
 
 Paths resolve against the repository root so the tool behaves identically
-no matter what directory the CLI is invoked from. Constants that later
-pipeline steps will need are declared here as placeholders with pointers
-back into ``docs/burmese-dictionary-spec.md``.
+no matter what directory the CLI is invoked from. Constants the pipeline
+steps depend on — asset filenames, the English stopword list, fuzzy
+thresholds, version-stamp scheme — all live here.
 """
 
 from __future__ import annotations
@@ -35,11 +35,11 @@ TOOL_ROOT: Path = REPO_ROOT / "tools" / "data-pipeline"
 DEFAULT_INPUT_PATH: Path = REPO_ROOT / "data" / "dictionary-burmese.jsonl"
 
 # Optional myG2P headword list for coverage extension (spec §3.2). Path is a
-# placeholder; later tasks will wire merging in.
+# placeholder; the `merge-g2p` step remains a stub in this task.
 DEFAULT_MYG2P_PATH: Path = REPO_ROOT / "data" / "myg2p-headwords.txt"
 
 # Pickled myWord n-gram dictionaries (spec §4.2). Placeholder directory;
-# population is owned by the n-gram conversion step.
+# the `convert-ngram` step remains a stub in this task.
 DEFAULT_NGRAM_DIR: Path = REPO_ROOT / "data" / "myword"
 
 # --- Outputs ----------------------------------------------------------------
@@ -47,14 +47,41 @@ DEFAULT_NGRAM_DIR: Path = REPO_ROOT / "data" / "myword"
 # Built artifacts land here. Git-ignored. Created on demand by io.ensure_output_dir.
 DEFAULT_OUTPUT_DIR: Path = TOOL_ROOT / "build"
 
+# Filenames the build pipeline produces under ``DEFAULT_OUTPUT_DIR``. The
+# frontend / service worker consume these names directly.
+DB_FILENAME: str = "dictionary.sqlite"
+BKTREE_EN_FILENAME: str = "bktree-en.json"
+BKTREE_MY_FILENAME: str = "bktree-my.json"
+VERSION_FILENAME: str = "version.json"
+
 # --- Reverse-lookup index (spec §3.4) ---------------------------------------
 
-# Stopwords excluded from the English inverted index. Final list is owned by
-# the index-build step; this placeholder mirrors the examples given in the
-# spec so future code has an obvious anchor to extend.
-ENGLISH_STOPWORDS: frozenset[str] = frozenset({"a", "an", "the", "of", "to", "and", "or"})
+# Stopwords excluded from the English inverted index. The list focuses on
+# closed-class English words that appear so often in Wiktionary glosses that
+# indexing them would surface a huge fraction of entries on any common query:
+# articles, common prepositions, conjunctions, copulas, basic pronouns, the
+# "to" infinitive marker. Picked conservatively — anything semantically loaded
+# (color words, common nouns, adjectives) is intentionally NOT here so the
+# user can still search for it.
+ENGLISH_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a", "an", "the",
+        "of", "to", "in", "on", "at", "by", "for", "from", "with", "as",
+        "into", "onto", "out", "off", "over", "under", "up", "down",
+        "and", "or", "but", "nor", "so", "yet", "if", "than", "that",
+        "this", "these", "those",
+        "is", "are", "was", "were", "be", "been", "being", "am",
+        "do", "does", "did", "done",
+        "have", "has", "had",
+        "it", "its", "he", "him", "his", "she", "her", "hers",
+        "they", "them", "their", "theirs",
+        "we", "us", "our", "ours", "you", "your", "yours", "i", "me", "my", "mine",
+        "not", "no",
+        "s",  # leftover from possessive splits
+    }
+)
 
-# Location for an override stopword file, if a later task wants to ship one
+# Location for an override stopword file if a later task wants to ship one
 # as data rather than code. Optional; not required to exist.
 STOPWORDS_FILE: Path = TOOL_ROOT / "data" / "stopwords-en.txt"
 
@@ -65,12 +92,13 @@ STOPWORDS_FILE: Path = TOOL_ROOT / "data" / "stopwords-en.txt"
 FUZZY_THRESHOLD_EN: int = 1  # character-level edit distance over gloss-words
 FUZZY_THRESHOLD_MY: int = 1  # syllable-level edit distance over headwords
 
-# --- Version stamp (spec §5.2) ----------------------------------------------
+# --- Version stamp (spec §3.3 / §5.2) ---------------------------------------
 
-# The shipped data assets embed a version string the service worker uses to
-# invalidate caches. Real value is emitted by the `version` step. Format is
-# a placeholder: "YYYYMMDD-<short-hash>" is the current working convention.
-VERSION_STAMP_FORMAT: str = "{date}-{short_hash}"
+# Scheme: ``YYYYMMDDTHHMMSSZ`` — UTC build timestamp, sortable, no external
+# inputs needed. The service worker compares the string for equality to
+# detect stale caches (it does not need to parse it). Documented in
+# README.md.
+VERSION_STAMP_FORMAT: str = "%Y%m%dT%H%M%SZ"
 
 # --- N-gram payload (spec §4.2.3) -------------------------------------------
 

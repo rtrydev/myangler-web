@@ -1,0 +1,90 @@
+"""End-to-end test for the `all` command over a tiny fixture."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from data_pipeline.config import (
+    BKTREE_EN_FILENAME,
+    BKTREE_MY_FILENAME,
+    DB_FILENAME,
+    VERSION_FILENAME,
+)
+
+
+def _write_fixture(path: Path) -> None:
+    entries = [
+        {
+            "word": "က",
+            "pos": "noun",
+            "senses": [{"glosses": ["letter ka"]}],
+            "sounds": [{"ipa": "/ka/"}],
+        },
+        {
+            "word": "သွား",
+            "pos": "verb",
+            "senses": [{"glosses": ["to go"]}, {"glosses": ["to depart"]}],
+        },
+        {
+            "word": "မြန်မာ",
+            "pos": "name",
+            "senses": [{"glosses": ["Myanmar (a country in Southeast Asia)"]}],
+        },
+        {
+            "word": "ထ",
+            "pos": "noun",
+            "senses": [],  # empty-gloss case
+        },
+    ]
+    with path.open("w", encoding="utf-8") as fh:
+        for e in entries:
+            fh.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+
+def test_all_produces_every_expected_asset(tmp_path: Path) -> None:
+    fixture = tmp_path / "tiny.jsonl"
+    _write_fixture(fixture)
+    out_dir = tmp_path / "build"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "data_pipeline",
+            "--input",
+            str(fixture),
+            "--output-dir",
+            str(out_dir),
+            "all",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    # Every shippable asset exists.
+    for name in (DB_FILENAME, BKTREE_EN_FILENAME, BKTREE_MY_FILENAME, VERSION_FILENAME):
+        assert (out_dir / name).is_file(), f"missing {name}; stdout:\n{result.stdout}"
+
+    # The stubs are mentioned as skipped.
+    assert "merge-g2p" in result.stdout
+    assert "convert-ngram" in result.stdout
+
+    # The report block prints.
+    assert "Build report" in result.stdout
+    assert "stripped entries" in result.stdout
+
+    # Version JSON is well-formed.
+    version_payload = json.loads((out_dir / VERSION_FILENAME).read_text())
+    assert "version" in version_payload
+    assert "scheme" in version_payload
+
+    # BK-trees are well-formed.
+    en_tree = json.loads((out_dir / BKTREE_EN_FILENAME).read_text())
+    my_tree = json.loads((out_dir / BKTREE_MY_FILENAME).read_text())
+    assert en_tree["format"] == "bktree/v1"
+    assert my_tree["format"] == "bktree/v1"
