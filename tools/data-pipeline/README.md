@@ -21,18 +21,18 @@ in particular **§3 (Data)** and **§6 (Build Pipeline)**.
 | `index-en` | implemented | English inverted index w/ exact/head/incidental tier flags |
 | `merge-g2p` | **stub** | Out of scope for v1; v1 ships on Wiktionary data only |
 | `build-db` | implemented | SQLite DB w/ indexes, VACUUMed |
-| `convert-ngram` | **stub** | Out of scope for v1 |
+| `convert-ngram` | implemented | Faithful conversion of myWord pickled n-grams to JSON; no pruning |
 | `bktree-en` | implemented | Char-level Levenshtein over gloss-words |
 | `bktree-my` | implemented | Syllable-level Levenshtein over headwords |
 | `version` | implemented | UTC build-timestamp stamp |
-| `report` | implemented | Prints entry counts and asset sizes |
+| `report` | implemented | Prints entry counts and asset sizes (incl. n-gram payload) |
 | `all` | implemented | Runs every implemented step in order |
 
-v1 ships on Wiktionary data alone. `merge-g2p` and `convert-ngram` remain
-logging-only stubs and are skipped by `all` — they are owned by later
-tasks. The myWord **word** segmenter is also out of scope here; only the
-build-time **syllable** segmenter (`data_pipeline.syllable`, used by the
-Burmese BK-tree) is implemented.
+`merge-g2p` remains a logging-only stub and is skipped by `all` —
+v1 ships on Wiktionary data alone. The myWord **word segmenter port
+itself** lives on the frontend and is owned by a later task; this tool
+only produces the n-gram **data asset** the segmenter consumes
+(`ngram.json`).
 
 ## Requirements
 
@@ -40,6 +40,9 @@ Burmese BK-tree) is implemented.
   and is what `pyproject.toml` declares).
 - The raw Burmese JSONL extract at `data/dictionary-burmese.jsonl`
   (already committed to the repo).
+- The myWord **word-level** unigram + bigram pickles at `data/myword/`
+  (see [`convert-ngram`](#convert-ngram-input-the-myword-pickles) below).
+  These are large binary inputs, **not** committed; provide them yourself.
 
 No third-party runtime dependencies — the implementation uses only the
 Python standard library (including the bundled `sqlite3`). Dev tools
@@ -71,6 +74,7 @@ data-pipeline index-en     # standalone: build & summarize the index
 data-pipeline build-db     # standalone: build the SQLite DB only
 data-pipeline bktree-en    # standalone: build the English BK-tree
 data-pipeline bktree-my    # standalone: build the Burmese BK-tree
+data-pipeline convert-ngram  # standalone: convert the myWord pickles
 data-pipeline version      # standalone: emit just the version stamp
 data-pipeline report       # equivalent to `all` (rebuilds + prints summary)
 ```
@@ -81,6 +85,8 @@ Global options:
   `data/dictionary-burmese.jsonl`, resolved against the repo root).
 - `--output-dir PATH`  Where built assets land (default:
   `tools/data-pipeline/build/`).
+- `--ngram-dir PATH`   Where the myWord pickles live (default:
+  `data/myword/`). Used by `convert-ngram` and `all`.
 - `-v` / `-vv`         Increase logging verbosity (info / debug).
 
 `all` streams the input file **once** and reuses the stripped
@@ -95,6 +101,7 @@ worker consume these names directly.
 | File | Format | Description |
 |---|---|---|
 | `dictionary.sqlite` | SQLite | Headword + glosses + English inverted index. Queried in-browser via `sql.js`. |
+| `ngram.json`        | JSON   | myWord unigram + bigram counts feeding the JS Viterbi word segmenter (spec §4.2). |
 | `bktree-en.json`    | JSON   | English BK-tree (char-level Levenshtein over gloss-words). |
 | `bktree-my.json`    | JSON   | Burmese BK-tree (syllable-level Levenshtein over headwords). |
 | `version.json`      | JSON   | Embedded version stamp for service-worker cache invalidation. |
@@ -181,6 +188,121 @@ Query thresholds live in `config.py`:
 `FUZZY_THRESHOLD_EN = 1`, `FUZZY_THRESHOLD_MY = 1` (spec §2.5). They are
 not baked into the tree.
 
+### `convert-ngram` input — the myWord pickles
+
+The `convert-ngram` step reads the **merged** word-level n-gram pickles
+that ship with the [myWord](https://github.com/ye-kyaw-thu/myWord)
+segmenter and converts them into `ngram.json` (above) for the JS Viterbi
+word segmenter (spec §4.2). The conversion is **faithful** — every
+unigram and bigram with its raw count is preserved. **No pruning,
+thresholding, or downsampling is performed.** A pruning pass may follow
+as a separate task informed by the sizes the `report` step emits.
+
+#### Files required
+
+| File | Source | Place at |
+|---|---|---|
+| `unigram-word.bin` | myWord `dict_ver1/` (after running `combine-all-splitted-files.sh`) | `data/myword/unigram-word.bin` |
+| `bigram-word.bin`  | myWord `dict_ver1/` (after running `combine-all-splitted-files.sh`) | `data/myword/bigram-word.bin` |
+
+To set up:
+
+```bash
+# Clone myWord and assemble the merged binaries (their bigrams are split
+# across many sub-files due to GitHub's 50 MB upload limit).
+git clone https://github.com/ye-kyaw-thu/myWord.git
+cd myWord/dict_ver1
+bash ./combine-all-splitted-files.sh
+
+# From the myangler-web repo root, copy or symlink them into place.
+mkdir -p data/myword
+ln -s "$(pwd)/unigram-word.bin" data/myword/unigram-word.bin
+ln -s "$(pwd)/bigram-word.bin"  data/myword/bigram-word.bin
+```
+
+`data/*` is git-ignored (see the repo `.gitignore`) so the pickles are
+not committed. If they are missing the step exits 1 with an actionable
+error pointing at the missing file — no stack trace.
+
+The phrase-level pickles myWord also ships (`unigram-phrase.bin`,
+`bigram-phrase.bin`) are intentionally **not** consumed: spec §2.2 / §4.2
+only port the *word* Viterbi segmenter, and the phrase data would
+roughly quadruple the precache payload for a feature the app does not
+expose.
+
+#### Verified pickle structure (myWord `dict_ver1` v1)
+
+| File | Pickle type | Key | Value | Entry count |
+|---|---|---|---|---|
+| `unigram-word.bin` | `collections.defaultdict(int)` | `str` (Burmese word) | `int` (raw count) | 124,676 |
+| `bigram-word.bin`  | `collections.defaultdict(int)` | `tuple[str, str]` (`(prev, curr)`) | `int` (raw count) | 1,155,739 |
+
+Notes on the upstream code:
+
+- The myWord `ProbDist` uses a **hardcoded denominator** `N = 102490` to
+  turn raw counts into probabilities. That constant is a code-level
+  detail of the original Python segmenter — `convert-ngram` preserves
+  raw counts plus the actual unigram/bigram totals so the JS port can
+  apply whatever normalization it wants (ML estimate, smoothing, the
+  legacy constant, etc.) without losing information.
+- `myWord/word_segment.py` looks up bigrams by `f"{prev} {curr}"`
+  *strings* even though the pickle is keyed by `(prev, curr)` *tuples*.
+  That mismatch is a latent bug in the upstream segmenter; we preserve
+  the tuple keys (the actual on-disk shape) faithfully and the JS port
+  is expected to look them up the same way.
+
+#### Trusted-input note
+
+Python's `pickle` can execute arbitrary code on `load`. The myWord
+upstream is treated as trusted, but `convert-ngram` still loads via a
+restricted unpickler (`_SafeUnpickler`) that only permits the small
+class set the legitimate myWord dictionaries use
+(`collections.defaultdict`, `dict`, `int`, `str`, `tuple`, `list`).
+**Do not** redirect this step at user-supplied or otherwise untrusted
+pickle paths; the safer fallback is to refuse to convert anything from
+an unknown source.
+
+### Output: `ngram.json` (frontend contract)
+
+UTF-8 JSON, single object. The shape is fixed — the JS Viterbi
+segmenter port consumes these field names directly.
+
+```jsonc
+{
+  "format": "myword-ngram/v1",
+  "source": {
+    "unigram": "unigram-word.bin",
+    "bigram":  "bigram-word.bin"
+  },
+  "unigram_count": 124676,         // distinct unigrams
+  "unigram_total": 12345678,       // sum of all unigram counts
+  "bigram_count":  1155739,        // distinct (prev, curr) pairs
+  "bigram_total":  9876543,        // sum of all bigram counts
+  "unigram": {
+    "က":   5,
+    "သွား": 7,
+    /* ... */
+  },
+  "bigram": {
+    "က":   { "ခ": 2, "သွား": 1 },
+    "သွား": { "မြန်မာ": 4 }
+    /* ... */
+  }
+}
+```
+
+- `unigram` is a flat `{word: count}` map.
+- `bigram` is a **2-level nested** `{prev: {curr: count}}` map. The
+  pickle's `(prev, curr)` tuple keys are grouped by `prev` so they
+  round-trip cleanly through JSON without inventing a key separator.
+- `unigram_total` / `bigram_total` are sums of the values in `unigram` /
+  `bigram` respectively. They are convenience metadata so the JS
+  segmenter doesn't have to walk the maps to compute them at startup;
+  the frontend may also recompute them and verify.
+- The asset is shipped **uncompressed**. Compression (gzip / brotli) at
+  the service-worker / hosting layer is a frontend concern; the `report`
+  step prints the gzipped size for budgeting purposes only.
+
 ### Version stamp
 
 `version.json` looks like:
@@ -201,13 +323,14 @@ distinguishable. Asset size: tens of bytes.
 
 1. `strip`     — strip entries to required fields; normalize glosses
 2. `index-en`  — build the English inverted index
-3. `merge-g2p` — *skipped* (stub)
+3. `merge-g2p` — *skipped* (stub; v1 ships on Wiktionary data only)
 4. `build-db`  — build, index, and VACUUM the SQLite database
-5. `convert-ngram` — *skipped* (stub)
+5. `convert-ngram` — convert myWord pickled n-grams into `ngram.json`
 6. `bktree-en` — build the English BK-tree
 7. `bktree-my` — build the Burmese BK-tree
 8. `version`   — emit the version stamp
-9. `report`    — print entry counts and on-disk asset sizes
+9. `report`    — print entry counts and on-disk asset sizes (incl.
+   the n-gram payload and per-asset gzipped sizes for budgeting)
 
 Mirrors spec §6 steps 2–10. Each step lives in its own module under
 `src/data_pipeline/steps/`.
@@ -234,6 +357,7 @@ tools/data-pipeline/
 │       ├── build_db.py    # SQLite assembly + VACUUM
 │       ├── bktree_en.py   # English BK-tree build & serialize
 │       ├── bktree_my.py   # Burmese BK-tree build & serialize
+│       ├── convert_ngram.py # myWord pickle → ngram.json
 │       ├── version.py     # version-stamp generation
 │       └── report.py      # final report formatter
 └── tests/
@@ -243,6 +367,7 @@ tools/data-pipeline/
     ├── test_syllable.py
     ├── test_bktree.py
     ├── test_build_db.py
+    ├── test_convert_ngram.py
     └── test_all_pipeline.py
 ```
 
@@ -272,13 +397,16 @@ covers:
 - SQLite build (expected tables/indexes; forward lookup; reverse lookup
   with tier ordering; merging via `gloss_groups`);
 - end-to-end `all` on a tiny fixture (every asset produced, version
-  stamp well-formed).
+  stamp well-formed);
+- `convert-ngram` against a synthetic pickle fixture mimicking the real
+  myWord shape: missing-input error, faithful-conversion check,
+  whitelist-unpickler safety check, deterministic round-trip.
 
 ## What's intentionally not here yet
 
 - `merge-g2p` (the myG2P headword merge — coverage extension)
-- `convert-ngram` (the myWord n-gram conversion — needed for the word
-  segmenter)
+- A pruning pass for the n-gram asset (a separate task, to be sized
+  against the numbers `report` prints)
 - The myWord **word** segmenter port itself (lives on the frontend)
 
 Built output under `build/` is git-ignored.

@@ -4,14 +4,15 @@ Each pipeline step from spec §6 is exposed as its own subcommand; the
 ``all`` command runs every implemented step in dependency order against
 a single streamed pass over the input file.
 
-``merge-g2p`` and ``convert-ngram`` remain logging-only stubs in this
-task (see ``README.md`` and the task brief).
+``merge-g2p`` remains a logging-only stub (v1 ships on Wiktionary data
+only — see ``README.md`` and the task brief).
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -21,7 +22,9 @@ from data_pipeline.config import (
     BKTREE_MY_FILENAME,
     DB_FILENAME,
     DEFAULT_INPUT_PATH,
+    DEFAULT_NGRAM_DIR,
     DEFAULT_OUTPUT_DIR,
+    NGRAM_FILENAME,
     VERSION_FILENAME,
     PipelineConfig,
 )
@@ -29,8 +32,18 @@ from data_pipeline.io import ReadStats, ensure_output_dir, iter_jsonl, output_pa
 from data_pipeline.steps.bktree_en import build_english_bktree, write_english_bktree
 from data_pipeline.steps.bktree_my import build_burmese_bktree, write_burmese_bktree
 from data_pipeline.steps.build_db import build_database
+from data_pipeline.steps.convert_ngram import (
+    MissingNgramInputError,
+    NgramStats,
+    convert_ngram_to_default,
+)
 from data_pipeline.steps.index_en import IndexStats, build_index
-from data_pipeline.steps.report import PipelineReport, measure_asset_sizes
+from data_pipeline.steps.report import (
+    NgramReport,
+    PipelineReport,
+    measure_asset_sizes,
+    measure_asset_sizes_gzipped,
+)
 from data_pipeline.steps.strip import StripStats, strip_entries
 from data_pipeline.steps.version import build_version_string, write_version_stamp
 
@@ -53,11 +66,12 @@ PIPELINE_STEPS: list[tuple[str, str]] = [
     ("report", "Report final entry count and asset sizes (spec §6.10)."),
 ]
 
-# Steps `all` actually runs (in this order). Stubs are intentionally skipped.
+# Steps `all` actually runs (in this order). ``merge-g2p`` remains a stub.
 ALL_STEPS: tuple[str, ...] = (
     "strip",
     "index-en",
     "build-db",
+    "convert-ngram",
     "bktree-en",
     "bktree-my",
     "version",
@@ -82,6 +96,7 @@ def _config_from_args(args: argparse.Namespace) -> PipelineConfig:
     return PipelineConfig(
         input_path=Path(args.input).resolve(),
         output_dir=Path(args.output_dir).resolve(),
+        ngram_dir=Path(args.ngram_dir).resolve(),
     )
 
 
@@ -198,6 +213,25 @@ def cmd_bktree_my(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_convert_ngram(args: argparse.Namespace) -> int:
+    cfg = _config_from_args(args)
+    ensure_output_dir(cfg.output_dir)
+    try:
+        stats = convert_ngram_to_default(cfg.ngram_dir, cfg.output_dir)
+    except MissingNgramInputError as exc:
+        # The exception's message is the user-facing instruction; print and
+        # exit cleanly without a stack trace.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    out = output_path(cfg.output_dir, NGRAM_FILENAME)
+    print(f"wrote {out} ({stats.output_size} bytes, {stats.output_size_gzipped} gz)")
+    print(f"unigrams           : {stats.unigram_count:,}")
+    print(f"bigrams            : {stats.bigram_count:,}")
+    print(f"unigram total count: {stats.unigram_total:,}")
+    print(f"bigram total count : {stats.bigram_total:,}")
+    return 0
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     cfg = _config_from_args(args)
     ensure_output_dir(cfg.output_dir)
@@ -273,8 +307,14 @@ def _run_all(cfg: PipelineConfig) -> int:
     db_path = output_path(cfg.output_dir, DB_FILENAME)
     build_database(db_path, entries, index)
 
-    logger.info("[convert-ngram] skipped — not implemented in this task")
-    print("[convert-ngram] skipped (not yet implemented)")
+    logger.info("[convert-ngram] converting myWord pickled n-grams")
+    ngram_path = output_path(cfg.output_dir, NGRAM_FILENAME)
+    ngram_stats: NgramStats | None = None
+    try:
+        ngram_stats = convert_ngram_to_default(cfg.ngram_dir, cfg.output_dir)
+    except MissingNgramInputError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     logger.info("[bktree-en] building English BK-tree")
     en_tree = build_english_bktree(index)
@@ -292,6 +332,13 @@ def _run_all(cfg: PipelineConfig) -> int:
     write_version_stamp(version_path, version)
 
     logger.info("[report] summarizing")
+    asset_paths: dict[str, Path] = {
+        DB_FILENAME: db_path,
+        NGRAM_FILENAME: ngram_path,
+        BKTREE_EN_FILENAME: en_path,
+        BKTREE_MY_FILENAME: my_path,
+        VERSION_FILENAME: version_path,
+    }
     report = PipelineReport(
         raw_entries=read_stats.parsed,
         stripped_entries=strip_stats.stripped,
@@ -299,15 +346,23 @@ def _run_all(cfg: PipelineConfig) -> int:
         empty_glosses=strip_stats.empty_glosses,
         distinct_words=index_stats.distinct_words,
         total_postings=index_stats.postings,
-        asset_sizes=measure_asset_sizes(
-            {
-                DB_FILENAME: db_path,
-                BKTREE_EN_FILENAME: en_path,
-                BKTREE_MY_FILENAME: my_path,
-                VERSION_FILENAME: version_path,
-            }
-        ),
+        asset_sizes=measure_asset_sizes(asset_paths),
+        asset_sizes_gzipped=measure_asset_sizes_gzipped(asset_paths),
         version=version,
+        ngram=NgramReport(
+            raw_unigram_size=ngram_stats.raw_unigram_size,
+            raw_bigram_size=ngram_stats.raw_bigram_size,
+            unigram_count=ngram_stats.unigram_count,
+            bigram_count=ngram_stats.bigram_count,
+            unigram_total=ngram_stats.unigram_total,
+            bigram_total=ngram_stats.bigram_total,
+            output_size=ngram_stats.output_size,
+            output_size_gzipped=ngram_stats.output_size_gzipped,
+            source_unigram=ngram_stats.source_unigram,
+            source_bigram=ngram_stats.source_bigram,
+        )
+        if ngram_stats is not None
+        else None,
     )
     for line in report.to_lines():
         print(line)
@@ -319,6 +374,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "strip": cmd_strip,
     "index-en": cmd_index_en,
     "build-db": cmd_build_db,
+    "convert-ngram": cmd_convert_ngram,
     "bktree-en": cmd_bktree_en,
     "bktree-my": cmd_bktree_my,
     "version": cmd_version,
@@ -352,6 +408,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="directory built assets are written to (default: %(default)s)",
     )
     parser.add_argument(
+        "--ngram-dir",
+        default=str(DEFAULT_NGRAM_DIR),
+        help=(
+            "directory holding the myWord pickled n-gram dictionaries "
+            "(unigram-word.bin, bigram-word.bin) — see README (default: %(default)s)"
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="count",
@@ -369,9 +433,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "all",
         help="Run every implemented pipeline step in order (spec §6).",
         description=(
-            "Run strip → index-en → build-db → bktree-en → bktree-my → "
-            "version → report against a single streaming pass over the "
-            "input file. merge-g2p and convert-ngram are skipped (stubs)."
+            "Run strip → index-en → build-db → convert-ngram → bktree-en → "
+            "bktree-my → version → report against a single streaming pass "
+            "over the input file. merge-g2p is skipped (stub — v1 ships on "
+            "Wiktionary data only)."
         ),
     )
     sp_all.set_defaults(handler=cmd_all)

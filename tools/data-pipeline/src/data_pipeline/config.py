@@ -38,9 +38,15 @@ DEFAULT_INPUT_PATH: Path = REPO_ROOT / "data" / "dictionary-burmese.jsonl"
 # placeholder; the `merge-g2p` step remains a stub in this task.
 DEFAULT_MYG2P_PATH: Path = REPO_ROOT / "data" / "myg2p-headwords.txt"
 
-# Pickled myWord n-gram dictionaries (spec §4.2). Placeholder directory;
-# the `convert-ngram` step remains a stub in this task.
+# Pickled myWord n-gram dictionaries (spec §4.2). The user is expected to
+# place (or symlink) the merged myWord ``dict_ver1/`` files here. Only the
+# *word* unigram + bigram pickles are consumed: the spec's JS Viterbi port
+# is the *word* segmenter (§2.2 / §4.2); the phrase n-grams ship with myWord
+# but the app exposes no phrase-segmentation feature, so they are not
+# converted here. README.md documents how to obtain and place the inputs.
 DEFAULT_NGRAM_DIR: Path = REPO_ROOT / "data" / "myword"
+NGRAM_UNIGRAM_FILENAME: str = "unigram-word.bin"
+NGRAM_BIGRAM_FILENAME: str = "bigram-word.bin"
 
 # --- Outputs ----------------------------------------------------------------
 
@@ -52,6 +58,7 @@ DEFAULT_OUTPUT_DIR: Path = TOOL_ROOT / "build"
 DB_FILENAME: str = "dictionary.sqlite"
 BKTREE_EN_FILENAME: str = "bktree-en.json"
 BKTREE_MY_FILENAME: str = "bktree-my.json"
+NGRAM_FILENAME: str = "ngram.json"
 VERSION_FILENAME: str = "version.json"
 
 # --- Reverse-lookup index (spec §3.4) ---------------------------------------
