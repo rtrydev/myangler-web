@@ -46,3 +46,10 @@ venv
 data/*
 !data/.gitkeep
 **/myWord
+
+# Static data assets copied from tools/data-pipeline/build/ via
+# `npm run sync:segmenter-asset` (see app/lib/segmenter/README.md).
+# Not committed to avoid drifting duplicates of the n-gram payload
+# (~32 MB) — the data-pipeline output is the single source of truth.
+/public/data/
+

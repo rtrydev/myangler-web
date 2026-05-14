@@ -256,18 +256,26 @@ The build pipeline produces the following static assets:
 - Reused in two places: (a) optional syllable-level display, (b) the tokenizer
   for Burmese fuzzy search (Section 2.5).
 
-### 4.2 Word segmentation — myWord Viterbi port
+### 4.2 Word segmentation — myWord Viterbi port (corrected)
 
-- Word segmentation is a **proper port of the myWord segmenter** to
-  JavaScript. The myWord word segmenter uses the **Viterbi algorithm** over
-  **unigram/bigram probability dictionaries**.
+- Word segmentation is a **port of the myWord segmenter** to JavaScript,
+  verified against a **corrected, vendored** Python reference at
+  `tools/data-pipeline/reference/myword/word_segment.py`. The port
+  performs **true unigram+bigram Viterbi**: every step consults
+  `P_bigram[(prev, curr)]` with a unigram backoff when the pair is
+  missing.
+- Upstream myWord shipped with a latent bug where bigram lookups used
+  string keys against a tuple-keyed pickle, leaving bigrams loaded but
+  never consulted; the vendored reference and the JS port both correct
+  this (see `tools/data-pipeline/reference/README.md`).
 - The port has three parts:
   1. **Viterbi logic** — a dynamic-programming routine (~50–100 lines of JS).
   2. **N-gram dictionary loading** — myWord ships these as pickled Python
-     binaries, which JavaScript cannot read. They must be **converted once**
-     (in Python, at build time) to a JS-loadable format (JSON or a packed
-     binary) and shipped as static assets.
-  3. **Asset size management** — the bigram dictionary can be large (tens of
+     binaries, which JavaScript cannot read. They are **converted once**
+     (in Python, at build time) by `data-pipeline convert-ngram` into a
+     2-level nested JSON (`bigram[prev][curr]`) so the JS port can look
+     bigrams up in O(1) per Viterbi step.
+  3. **Asset size management** — the bigram dictionary is large (tens of
      MB). Combined with the SQLite DB, total precached payload could reach
      **30–50 MB+**. Because the PWA precaches everything on first load, this is
      a hard UX concern, not a footnote. Compression and/or pruning the n-gram

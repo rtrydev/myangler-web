@@ -30,9 +30,18 @@ in particular **§3 (Data)** and **§6 (Build Pipeline)**.
 
 `merge-g2p` remains a logging-only stub and is skipped by `all` —
 v1 ships on Wiktionary data alone. The myWord **word segmenter port
-itself** lives on the frontend and is owned by a later task; this tool
-only produces the n-gram **data asset** the segmenter consumes
-(`ngram.json`).
+itself** lives on the frontend; this tool only produces the n-gram
+**data asset** the segmenter consumes (`ngram.json`).
+
+A **corrected, vendored** Python reference implementation of the myWord
+word segmenter also lives in this directory at
+[`reference/myword/word_segment.py`](reference/myword/word_segment.py).
+That reference is **not** part of the build pipeline — no `data-pipeline`
+step imports it — and it exists only to (a) be the corrected algorithm
+the TypeScript port is verified against and (b) regenerate
+`app/lib/segmenter/__fixtures__/reference-corpus.json`. See
+[`reference/README.md`](reference/README.md) for what was changed from
+upstream and why.
 
 ## Requirements
 
@@ -245,11 +254,14 @@ Notes on the upstream code:
   raw counts plus the actual unigram/bigram totals so the JS port can
   apply whatever normalization it wants (ML estimate, smoothing, the
   legacy constant, etc.) without losing information.
-- `myWord/word_segment.py` looks up bigrams by `f"{prev} {curr}"`
-  *strings* even though the pickle is keyed by `(prev, curr)` *tuples*.
-  That mismatch is a latent bug in the upstream segmenter; we preserve
-  the tuple keys (the actual on-disk shape) faithfully and the JS port
-  is expected to look them up the same way.
+- Upstream `myWord/word_segment.py` looked up bigrams by
+  `f"{prev} {curr}"` *strings* even though the pickle is keyed by
+  `(prev, curr)` *tuples*. That mismatch meant every bigram lookup
+  raised `KeyError` in upstream and the segmenter silently fell back to
+  unigram-only scoring. Both the JS port and the vendored Python
+  reference at [`reference/myword/word_segment.py`](reference/myword/word_segment.py)
+  fix this by looking up the tuple key (`bigram[prev][curr]`) that
+  actually exists in the pickle and in `ngram.json`.
 
 #### Trusted-input note
 
@@ -294,7 +306,9 @@ segmenter port consumes these field names directly.
 - `unigram` is a flat `{word: count}` map.
 - `bigram` is a **2-level nested** `{prev: {curr: count}}` map. The
   pickle's `(prev, curr)` tuple keys are grouped by `prev` so they
-  round-trip cleanly through JSON without inventing a key separator.
+  round-trip cleanly through JSON without inventing a key separator,
+  and so the JS port can look them up directly via
+  `bigram.get(prev)?.get(curr)` (O(1) per Viterbi step).
 - `unigram_total` / `bigram_total` are sums of the values in `unigram` /
   `bigram` respectively. They are convenience metadata so the JS
   segmenter doesn't have to walk the maps to compute them at startup;
@@ -407,6 +421,8 @@ covers:
 - `merge-g2p` (the myG2P headword merge — coverage extension)
 - A pruning pass for the n-gram asset (a separate task, to be sized
   against the numbers `report` prints)
-- The myWord **word** segmenter port itself (lives on the frontend)
+- The myWord **word** segmenter port itself (lives on the frontend
+  under `app/lib/segmenter/`; the vendored reference under
+  `reference/myword/` is its ground truth, not part of the pipeline)
 
 Built output under `build/` is git-ignored.

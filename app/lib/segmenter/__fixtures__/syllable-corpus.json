@@ -1,0 +1,111 @@
+{
+  "format": "syllable-corpus/v1",
+  "description": "Shared cross-language corpus for the Burmese syllable segmenter (spec §4.1). The same JSON is consumed by tools/data-pipeline/tests/test_syllable_corpus.py and app/lib/segmenter/syllable.test.ts to keep the Python and TypeScript implementations pinned to identical outputs.",
+  "cases": [
+    {
+      "name": "empty",
+      "input": "",
+      "expected": []
+    },
+    {
+      "name": "single consonant",
+      "input": "က",
+      "expected": ["က"]
+    },
+    {
+      "name": "asat closes previous syllable",
+      "input": "မြန်မာ",
+      "expected": ["မြန်", "မာ"]
+    },
+    {
+      "name": "closed syllable with tone mark",
+      "input": "နေကောင်းလား",
+      "expected": ["နေ", "ကောင်း", "လား"]
+    },
+    {
+      "name": "stacked consonants via virama",
+      "input": "အင်္ဂါ",
+      "expected": ["အင်္ဂါ"]
+    },
+    {
+      "name": "stacked consonants — manta",
+      "input": "မန္တလေး",
+      "expected": ["မ", "န္တ", "လေး"]
+    },
+    {
+      "name": "Wikipedia transliteration",
+      "input": "ဝီကီပိဒိယ",
+      "expected": ["ဝီ", "ကီ", "ပိ", "ဒိ", "ယ"]
+    },
+    {
+      "name": "Burmese digits emitted singly",
+      "input": "၁၂၃",
+      "expected": ["၁", "၂", "၃"]
+    },
+    {
+      "name": "ASCII digits emitted singly",
+      "input": "123",
+      "expected": ["1", "2", "3"]
+    },
+    {
+      "name": "section sign / Burmese punctuation",
+      "input": "က။",
+      "expected": ["က", "။"]
+    },
+    {
+      "name": "multiple vowel and tone marks",
+      "input": "ကောင်း",
+      "expected": ["ကောင်း"]
+    },
+    {
+      "name": "independent vowel",
+      "input": "ဣန္ဒြိယ",
+      "expected": ["ဣ", "န္ဒြိ", "ယ"]
+    },
+    {
+      "name": "medial ya followed by another consonant",
+      "input": "ကျောင်း",
+      "expected": ["ကျောင်း"]
+    },
+    {
+      "name": "two medials and a vowel",
+      "input": "ကြွေး",
+      "expected": ["ကြွေး"]
+    },
+    {
+      "name": "ASCII letters interleaved with Burmese",
+      "input": "ကxခ",
+      "expected": ["က", "x", "ခ"]
+    },
+    {
+      "name": "spaces interleaved with Burmese",
+      "input": "က ခ",
+      "expected": ["က", " ", "ခ"]
+    },
+    {
+      "name": "ASCII word interleaved with Burmese",
+      "input": "ကabခ",
+      "expected": ["က", "a", "b", "ခ"]
+    },
+    {
+      "name": "Burmese sentence with punctuation and digits",
+      "input": "မြန်မာ၁၂၃။",
+      "expected": ["မြန်", "မာ", "၁", "၂", "၃", "။"]
+    },
+    {
+      "name": "Burmese sentence with paragraph mark",
+      "input": "မြန်မာ၏",
+      "expected": ["မြန်", "မာ", "၏"]
+    },
+    {
+      "name": "ka with asat (closed syllable)",
+      "input": "ကက်",
+      "expected": ["ကက်"]
+    },
+    {
+      "name": "round trip: long sentence",
+      "input": "နေကောင်းလားအင်္ဂါမြန်မာ",
+      "expected": ["နေ", "ကောင်း", "လား", "အင်္ဂါ", "မြန်", "မာ"]
+    }
+  ]
+}

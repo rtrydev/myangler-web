@@ -1,0 +1,22 @@
+{
+  "format": "myword-ngram/v1",
+  "source": {
+    "unigram": "synthetic",
+    "bigram": "synthetic"
+  },
+  "unigram_count": 4,
+  "unigram_total": 250,
+  "bigram_count": 1,
+  "bigram_total": 7,
+  "unigram": {
+    "မြန်မာ": 100,
+    "စကား": 50,
+    "က": 80,
+    "ပြော": 20
+  },
+  "bigram": {
+    "မြန်မာ": {
+      "စကား": 7
+    }
+  }
+}

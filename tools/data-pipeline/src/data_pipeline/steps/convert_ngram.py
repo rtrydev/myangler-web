@@ -20,9 +20,12 @@ quadruple the precache payload for a feature the app does not expose.
   word string (Burmese ``str``); values are raw integer counts.
 * ``bigram-word.bin`` is a ``defaultdict(int)`` keyed by a
   ``tuple[str, str]`` of ``(prev_word, curr_word)``; values are raw
-  integer counts. (Note: ``myWord/word_segment.py`` looks up bigrams by
-  ``"prev curr"`` strings — that is a latent bug in the original code;
-  the pickle itself uses tuple keys, which is what we preserve.)
+  integer counts. (Upstream ``myWord/word_segment.py`` looked these up
+  by ``"prev curr"`` strings — a bug that left bigrams loaded but
+  never consulted. The repo's corrected reference at
+  ``tools/data-pipeline/reference/myword/word_segment.py`` and the JS
+  port at ``app/lib/segmenter/wordSegmenter.ts`` both fix it; this
+  conversion step preserves the on-disk tuple shape unchanged.)
 
 ### Output format (frontend contract)
 
