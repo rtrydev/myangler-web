@@ -246,7 +246,7 @@ body {
   font-family: var(--font-noto-mm), serif;
   font-size: 20px;
   color: var(--ink);
-  line-height: 1;
+  line-height: 1.35;
 }
 .wblock .w-en {
   font-family: var(--font-spectral), serif;

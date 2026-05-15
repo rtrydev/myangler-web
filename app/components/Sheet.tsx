@@ -55,7 +55,7 @@ export function Sheet({ open, onClose, label, children }: SheetProps) {
         style={{
           borderRadius: "22px 22px 0 0",
           boxShadow: "var(--modal-shadow)",
-          maxHeight: "92%",
+          height: "92%",
         }}
         data-testid="sheet-surface"
       >
@@ -68,13 +68,13 @@ export function Sheet({ open, onClose, label, children }: SheetProps) {
             opacity: 0.35,
           }}
         />
-        <div className="flex justify-center pt-2">
+        <div className="flex justify-center pt-2 shrink-0">
           <div
             className="w-9 h-1 rounded-full bg-ink-faint"
             style={{ opacity: 0.4 }}
           />
         </div>
-        {children}
+        <div className="flex-1 min-h-0 flex flex-col">{children}</div>
       </div>
     </div>
   );

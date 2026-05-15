@@ -177,9 +177,6 @@ export default function Page() {
               <Button variant="ghost">
                 <TrashIcon size={14} /> Clear
               </Button>
-              <Button variant="icon" aria-label="Pronounce">
-                <SpeakerIcon size={16} />
-              </Button>
               <Button variant="icon" aria-label="Copy">
                 <CopyIcon size={16} />
               </Button>
@@ -310,7 +307,6 @@ export default function Page() {
                 related={[SAMPLE_PEER]}
                 saved={saved}
                 onSave={() => setSaved(s => !s)}
-                onPronounce={() => {}}
                 onCopy={() => {}}
                 onShare={() => {}}
               />
@@ -342,7 +338,6 @@ export default function Page() {
                 saved={saved}
                 onSave={() => setSaved(s => !s)}
                 onClose={() => setModalOpen(false)}
-                onPronounce={() => {}}
                 onCopy={() => {}}
                 onShare={() => {}}
               />

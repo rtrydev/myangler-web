@@ -36,10 +36,10 @@ export function FavoritesView({ items, onSelect }: FavoritesViewProps) {
     >
       <div className="px-5 pt-1 pb-3.5 flex items-baseline justify-between">
         <div>
-          <h2 className="serif text-[26px] text-ink tracking-tight leading-none">
+          <h2 className="serif text-[26px] text-ink tracking-tight leading-tight">
             Saved
           </h2>
-          <div className="mm text-[13px] text-gold mt-1">သိမ်းဆည်းထားသော</div>
+          <div className="mm text-[13px] text-gold mt-1 leading-snug">သိမ်းဆည်းထားသော</div>
         </div>
         <span className="ui text-[11px] text-ink-3">
           {items.length} {items.length === 1 ? "word" : "words"}

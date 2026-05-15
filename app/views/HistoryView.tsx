@@ -41,10 +41,10 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
     >
       <div className="px-5 pt-1 pb-3.5 flex items-baseline justify-between">
         <div>
-          <h2 className="serif text-[26px] text-ink tracking-tight leading-none">
+          <h2 className="serif text-[26px] text-ink tracking-tight leading-tight">
             History
           </h2>
-          <div className="mm text-[13px] text-gold mt-1">သမိုင်း</div>
+          <div className="mm text-[13px] text-gold mt-1 leading-snug">သမိုင်း</div>
         </div>
         {items.length > 0 && onClear && (
           <Button
@@ -85,7 +85,11 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
                     <div className="flex-1 min-w-0">
                       <div
                         className={`${isLatin ? "serif" : "mm"} text-base text-ink ${
-                          isSent ? "leading-snug" : "truncate"
+                          isSent
+                            ? "leading-snug"
+                            : isLatin
+                              ? "truncate"
+                              : "truncate leading-[2.5]"
                         }`}
                       >
                         {item.query}

@@ -4,8 +4,8 @@
 //   - Desktop: embedded in the right-hand detail rail.
 //
 // Pure presentation — receives an `Entry` (and optional related forms)
-// and renders the design system's entry layout. Save / pronounce / copy
-// / share callbacks are passed in by the parent.
+// and renders the design system's entry layout. Save / copy / share
+// callbacks are passed in by the parent.
 
 import { Fragment } from "react";
 import type { Entry } from "@/app/lib/lookup";
@@ -14,7 +14,6 @@ import {
   CloseIcon,
   CopyIcon,
   ShareIcon,
-  SpeakerIcon,
   StarFillIcon,
   StarIcon,
 } from "./Icon";
@@ -28,7 +27,6 @@ type EntryDetailProps = {
   related?: readonly Entry[];
   saved?: boolean;
   onSave?: () => void;
-  onPronounce?: () => void;
   onCopy?: () => void;
   onShare?: () => void;
   /** When provided, render a close button in the header. Mobile modal
@@ -42,24 +40,27 @@ export function EntryDetail({
   related = [],
   saved = false,
   onSave,
-  onPronounce,
   onCopy,
   onShare,
   onClose,
   onSelectRelated,
 }: EntryDetailProps) {
   return (
-    <div className="entry-detail flex flex-col h-full" data-testid="entry-detail">
-      <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-start gap-3">
-        <div>
-          <div className="eyebrow eyebrow-gold mb-1.5">Entry</div>
+    <div
+      className="entry-detail flex flex-col h-full min-h-0"
+      data-testid="entry-detail"
+    >
+      <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-start gap-3 shrink-0">
+        <div className="min-w-0">
+          <div className="eyebrow eyebrow-gold mb-3.5">Entry</div>
           <div
-            className="mm text-[44px] leading-none text-ink"
+            className="mm text-[44px] text-ink"
+            style={{ lineHeight: 1.5 }}
             data-testid="entry-headword"
           >
             {entry.headword}
           </div>
-          <div className="flex items-center gap-2.5 mt-2">
+          <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
             {entry.ipa && (
               <>
                 <span className="serif italic text-sm text-ink-3">
@@ -85,11 +86,11 @@ export function EntryDetail({
         )}
       </div>
 
-      <div className="px-5.5">
+      <div className="px-5.5 shrink-0">
         <RuleGold />
       </div>
 
-      <div className="px-5.5 pt-4 overflow-y-auto no-scroll flex-1">
+      <div className="px-5.5 pt-4 overflow-y-auto no-scroll flex-1 min-h-0">
         <div className="eyebrow mb-2.5">Meanings</div>
         <ol className="flex flex-col gap-3 list-none p-0 m-0" aria-label="Meanings">
           {entry.glosses.map((gloss, i) => (
@@ -126,7 +127,7 @@ export function EntryDetail({
         )}
       </div>
 
-      <div className="px-5.5 pt-4 pb-5.5 flex gap-2.5">
+      <div className="px-5.5 pt-4 pb-5.5 flex gap-2.5 shrink-0 bg-paper border-t border-border">
         <Button
           variant="primary"
           className="flex-1"
@@ -139,14 +140,7 @@ export function EntryDetail({
         </Button>
         <Button
           variant="icon"
-          onClick={onPronounce}
-          aria-label="Pronounce"
-          disabled={!onPronounce}
-        >
-          <SpeakerIcon size={16} />
-        </Button>
-        <Button
-          variant="icon"
+          className="h-auto! w-12!"
           onClick={onCopy}
           aria-label="Copy"
           disabled={!onCopy}
@@ -155,6 +149,7 @@ export function EntryDetail({
         </Button>
         <Button
           variant="icon"
+          className="h-auto! w-12!"
           onClick={onShare}
           aria-label="Share"
           disabled={!onShare}

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Spectral, Noto_Serif_Myanmar, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -30,6 +30,22 @@ const jetbrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Myangler · Burmese ↔ English",
   description: "A pocket Burmese–English dictionary. Offline-first, parchment-and-lacquer themed.",
+  applicationName: "Myangler",
+  appleWebApp: {
+    capable: true,
+    title: "Myangler",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F1E8D2" },
+    { media: "(prefers-color-scheme: dark)", color: "#16100A" },
+  ],
 };
 
 export default function RootLayout({

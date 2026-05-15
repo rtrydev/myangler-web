@@ -165,6 +165,17 @@ function AppShellReady({
     favorites.toggle(entryToFavorite(selected));
   }
 
+  function handleCopy() {
+    if (!selected) return;
+    const glosses = selected.glosses.join("; ");
+    const text = glosses
+      ? `${selected.headword} — ${glosses}`
+      : selected.headword;
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text);
+    }
+  }
+
   return (
     <div
       className="h-dvh overflow-hidden bg-bg text-ink paper-tex relative"
@@ -332,6 +343,7 @@ function AppShellReady({
                     related={related}
                     saved={favorites.isSaved(selected.entryId)}
                     onSave={handleSaveToggle}
+                    onCopy={handleCopy}
                     onClose={closeEntry}
                     onSelectRelated={r => setSelected(r)}
                   />
@@ -365,6 +377,7 @@ function AppShellReady({
               related={related}
               saved={favorites.isSaved(selected.entryId)}
               onSave={handleSaveToggle}
+              onCopy={handleCopy}
               onSelectRelated={r => setSelected(r)}
             />
           ) : (

@@ -89,8 +89,22 @@ describe("EntryDetail", () => {
 
   test("disables auxiliary actions when their callbacks aren't provided", () => {
     render(<EntryDetail entry={entry} />);
-    expect(screen.getByRole("button", { name: /pronounce/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /copy/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /share/i })).toBeDisabled();
+  });
+
+  test("does not render a pronounce/read-aloud button", () => {
+    render(<EntryDetail entry={entry} />);
+    expect(
+      screen.queryByRole("button", { name: /pronounce/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("clicking Copy fires onCopy", async () => {
+    const user = userEvent.setup();
+    const onCopy = vi.fn();
+    render(<EntryDetail entry={entry} onCopy={onCopy} />);
+    await user.click(screen.getByRole("button", { name: /copy/i }));
+    expect(onCopy).toHaveBeenCalledOnce();
   });
 });
