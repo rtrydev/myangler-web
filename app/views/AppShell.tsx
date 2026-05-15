@@ -9,7 +9,7 @@
 // and the mobile chrome (top wordmark + bottom tab bar + entry sheet)
 // with `lg:hidden`. The main content column is shared.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Logo, Wordmark } from "@/app/components/Logo";
 import { SearchInput } from "@/app/components/SearchInput";
 import { TabBar, type TabItem } from "@/app/components/TabBar";
@@ -86,22 +86,8 @@ function AppShellReady({
   const [dark, setDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const searchInputRef = useRef<HTMLDivElement>(null);
-  // Initial guess matches the input's natural ~50px so the first paint
-  // looks right; ResizeObserver below corrects it once measured.
-  const [shareBtnSize, setShareBtnSize] = useState(50);
   const history = useHistory();
   const favorites = useFavorites();
-
-  useEffect(() => {
-    const el = searchInputRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => {
-      setShareBtnSize(el.getBoundingClientRect().height);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   // Seed the query from `?q=` on first mount. Initial useState stays
   // empty so SSR-rendered HTML matches the first client render — no
@@ -355,7 +341,7 @@ function AppShellReady({
           {tab === "search" && (
             <div className="px-4 py-2.5 lg:px-8 lg:py-3.5 lg:border-b lg:border-border bg-bg">
               <div className="lg:max-w-2xl flex items-center gap-2">
-                <div ref={searchInputRef} className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0">
                   <SearchInput
                     aria-label="Search"
                     placeholder="ရှာဖွေရန် · search a word or sentence"
@@ -371,7 +357,7 @@ function AppShellReady({
                     onClick={handleShareQuery}
                     aria-label="Share search"
                     data-testid="share-query"
-                    style={{ width: shareBtnSize, height: shareBtnSize }}
+                    className="h-13! w-13!"
                   >
                     <ShareIcon size={16} />
                   </Button>
