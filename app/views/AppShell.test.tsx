@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EngineProvider } from "@/app/lib/app/engine-context";
@@ -10,7 +10,12 @@ import { clearAllStorage, FAVORITES_KEY } from "@/app/lib/app/storage";
 import type { FavoriteItem, HistoryItem } from "@/app/lib/app/types";
 import { AppShell } from "./AppShell";
 
-beforeEach(() => clearAllStorage());
+beforeEach(() => {
+  clearAllStorage();
+  // Reset URL between tests — `replaceState` from a prior test would
+  // otherwise leak `?q=…` into the next one's initial mount.
+  window.history.replaceState({}, "", "/");
+});
 
 describe("AppShell · ready state", () => {
   test("renders the app shell once the engine is ready", async () => {
@@ -389,5 +394,90 @@ describe("AppShell · favorites navigation", () => {
     expect(
       (await screen.findAllByTestId("entry-headword"))[0],
     ).toHaveTextContent("ပြော");
+  });
+});
+
+describe("AppShell · shareable URL", () => {
+  test("mounting with ?q=… seeds the search input and shows results", async () => {
+    window.history.replaceState({}, "", "/?q=speak");
+    await renderWithEngine(<AppShell />);
+    const input = screen.getByRole("textbox", { name: /search/i }) as HTMLInputElement;
+    await waitFor(() => expect(input.value).toBe("speak"));
+    await waitFor(() =>
+      expect(screen.getByTestId("results-view")).toBeInTheDocument(),
+    );
+  });
+
+  test("typing updates window.location.search via replaceState", async () => {
+    const user = userEvent.setup();
+    await renderWithEngine(<AppShell />);
+    const input = screen.getByRole("textbox", { name: /search/i });
+    await user.type(input, "speak");
+    await waitFor(() =>
+      expect(window.location.search).toBe("?q=speak"),
+    );
+  });
+
+  test("clearing the input removes the q parameter from the URL", async () => {
+    const user = userEvent.setup();
+    await renderWithEngine(<AppShell />);
+    const input = screen.getByRole("textbox", { name: /search/i });
+    await user.type(input, "speak");
+    await waitFor(() => expect(window.location.search).toBe("?q=speak"));
+    await user.clear(input);
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+
+  test("the per-query share button copies the share URL and shows a toast", async () => {
+    const user = userEvent.setup();
+    // userEvent installs a virtual clipboard on navigator.clipboard;
+    // spy on its writeText so we can assert the URL the handler copies.
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+
+    await renderWithEngine(<AppShell />);
+    const input = screen.getByRole("textbox", { name: /search/i });
+    await user.type(input, "speak");
+
+    const shareBtn = await screen.findByTestId("share-query");
+    await user.click(shareBtn);
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const url = writeText.mock.calls[0][0] as string;
+    expect(url).toContain("?q=speak");
+    expect(url.startsWith(window.location.origin)).toBe(true);
+
+    expect(await screen.findByRole("status")).toHaveTextContent(/link copied/i);
+  });
+
+  test("the share button is hidden when the query is empty", async () => {
+    await renderWithEngine(<AppShell />);
+    expect(screen.queryByTestId("share-query")).not.toBeInTheDocument();
+  });
+
+  test("the EntryDetail share button copies a URL whose q is the entry headword", async () => {
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+
+    await renderWithEngine(<AppShell />);
+    const input = screen.getByRole("textbox", { name: /search/i });
+    await user.type(input, "speak");
+    await waitFor(() => screen.getByText("ပြော"));
+    await user.click(screen.getByText("ပြော"));
+
+    // Mobile sheet + desktop rail both render in jsdom — click the first
+    // "Share" button. The per-query share button is also on screen but
+    // has aria-label "Share search", so the /^share$/i name matches only
+    // the EntryDetail one.
+    const shareButtons = await screen.findAllByRole("button", { name: /^share$/i });
+    await user.click(shareButtons[0]);
+
+    expect(writeText).toHaveBeenCalled();
+    const url = writeText.mock.calls.at(-1)?.[0] as string;
+    expect(url).toContain("?q=");
+    expect(decodeURIComponent(url)).toContain("ပြော");
   });
 });

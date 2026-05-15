@@ -9,6 +9,7 @@ import { SearchInput } from "../components/SearchInput";
 import { WordBlock } from "../components/WordBlock";
 import { ResultRow } from "../components/ResultRow";
 import { Card, Note } from "../components/Card";
+import { Toast } from "../components/Toast";
 import { Eyebrow, RuleGold, Ornament } from "../components/Ornament";
 import { TabBar } from "../components/TabBar";
 import { ThemeToggle, AccentSwitcher, type Accent } from "../components/ThemeToggle";
@@ -77,6 +78,7 @@ export default function Page() {
   const [activeTab, setActiveTab] = useState("search");
   const [modalOpen, setModalOpen] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [toastOpen, setToastOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.accent = accent;
@@ -395,6 +397,29 @@ export default function Page() {
                 { id: "fav", label: "Saved", icon: ({ size }) => <StarIcon size={size} /> },
               ]}
             />
+          </Card>
+        </section>
+
+        {/* ─── Toast ─── */}
+        <section>
+          <Eyebrow withRule>Toast</Eyebrow>
+          <Card className="mt-6 p-6 flex flex-col gap-3">
+            <p className="serif italic text-ink-3 text-sm">
+              Brief, auto-dismissed confirmation. Controlled by the parent — the
+              parent decides when to clear it.
+            </p>
+            <div>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setToastOpen(true);
+                  setTimeout(() => setToastOpen(false), 1800);
+                }}
+              >
+                Show toast
+              </Button>
+            </div>
+            <Toast open={toastOpen} message="Link copied" />
           </Card>
         </section>
 

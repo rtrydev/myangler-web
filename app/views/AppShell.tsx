@@ -9,7 +9,7 @@
 // and the mobile chrome (top wordmark + bottom tab bar + entry sheet)
 // with `lg:hidden`. The main content column is shared.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Logo, Wordmark } from "@/app/components/Logo";
 import { SearchInput } from "@/app/components/SearchInput";
 import { TabBar, type TabItem } from "@/app/components/TabBar";
@@ -17,6 +17,7 @@ import { type Accent } from "@/app/components/ThemeToggle";
 import { Button } from "@/app/components/Button";
 import { EntryDetail } from "@/app/components/EntryDetail";
 import { Sheet } from "@/app/components/Sheet";
+import { Toast } from "@/app/components/Toast";
 import { Eyebrow } from "@/app/components/Ornament";
 import {
   ClockIcon,
@@ -24,6 +25,7 @@ import {
   OfflineIcon,
   SearchIcon,
   SettingsIcon,
+  ShareIcon,
   StarIcon,
 } from "@/app/components/Icon";
 import { SettingsView } from "./SettingsView";
@@ -83,8 +85,57 @@ function AppShellReady({
   const [modalOpen, setModalOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLDivElement>(null);
+  // Initial guess matches the input's natural ~50px so the first paint
+  // looks right; ResizeObserver below corrects it once measured.
+  const [shareBtnSize, setShareBtnSize] = useState(50);
   const history = useHistory();
   const favorites = useFavorites();
+
+  useEffect(() => {
+    const el = searchInputRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      setShareBtnSize(el.getBoundingClientRect().height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Seed the query from `?q=` on first mount. Initial useState stays
+  // empty so SSR-rendered HTML matches the first client render — no
+  // hydration mismatch — and we pull the URL value in afterwards.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initial = params.get("q");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- URL is only readable on the client; doing this in a lazy useState initializer would cause a server/client hydration mismatch.
+    if (initial) setQuery(initial);
+  }, []);
+
+  // Mirror `query` back into the URL. `replaceState` (not `pushState`)
+  // so a long search doesn't fill the back stack with one entry per
+  // keystroke.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const current = params.get("q") ?? "";
+    if (current === query) return;
+    if (query) params.set("q", query);
+    else params.delete("q");
+    const search = params.toString();
+    const next =
+      window.location.pathname +
+      (search ? `?${search}` : "") +
+      window.location.hash;
+    window.history.replaceState({}, "", next);
+  }, [query]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 2000);
+    return () => window.clearTimeout(id);
+  }, [toast]);
 
   useEffect(() => {
     // `--ruby` is remapped per accent via [data-accent] rules in
@@ -174,6 +225,31 @@ function AppShellReady({
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(text);
     }
+  }
+
+  function shareUrlFor(q: string): string {
+    const params = new URLSearchParams();
+    params.set("q", q);
+    return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+  }
+
+  function copyShareUrl(q: string) {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    const url = shareUrlFor(trimmed);
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(url);
+    }
+    setToast("Link copied");
+  }
+
+  function handleShareQuery() {
+    copyShareUrl(query);
+  }
+
+  function handleShareEntry() {
+    if (!selected) return;
+    copyShareUrl(selected.headword);
   }
 
   return (
@@ -278,15 +354,28 @@ function AppShellReady({
           {/* Search input — only on the search tab */}
           {tab === "search" && (
             <div className="px-4 py-2.5 lg:px-8 lg:py-3.5 lg:border-b lg:border-border bg-bg">
-              <div className="lg:max-w-2xl">
-                <SearchInput
-                  aria-label="Search"
-                  placeholder="ရှာဖွေရန် · search a word or sentence"
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  onClear={() => setQuery("")}
-                  autoFocus
-                />
+              <div className="lg:max-w-2xl flex items-center gap-2">
+                <div ref={searchInputRef} className="flex-1 min-w-0">
+                  <SearchInput
+                    aria-label="Search"
+                    placeholder="ရှာဖွေရန် · search a word or sentence"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    onClear={() => setQuery("")}
+                    autoFocus
+                  />
+                </div>
+                {query.trim() !== "" && (
+                  <Button
+                    variant="icon"
+                    onClick={handleShareQuery}
+                    aria-label="Share search"
+                    data-testid="share-query"
+                    style={{ width: shareBtnSize, height: shareBtnSize }}
+                  >
+                    <ShareIcon size={16} />
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -344,6 +433,7 @@ function AppShellReady({
                     saved={favorites.isSaved(selected.entryId)}
                     onSave={handleSaveToggle}
                     onCopy={handleCopy}
+                    onShare={handleShareEntry}
                     onClose={closeEntry}
                     onSelectRelated={r => setSelected(r)}
                   />
@@ -378,6 +468,7 @@ function AppShellReady({
               saved={favorites.isSaved(selected.entryId)}
               onSave={handleSaveToggle}
               onCopy={handleCopy}
+              onShare={handleShareEntry}
               onSelectRelated={r => setSelected(r)}
             />
           ) : (
@@ -405,6 +496,8 @@ function AppShellReady({
           />
         </Sheet>
       </div>
+
+      <Toast open={toast !== null} message={toast ?? ""} />
     </div>
   );
 }
