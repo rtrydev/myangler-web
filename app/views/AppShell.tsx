@@ -300,7 +300,7 @@ function AppShellReady({
                     className="w-full flex justify-between gap-2 items-baseline cursor-pointer text-left hover:text-ink"
                   >
                     <span
-                      className={`${h.kind === "latin" ? "serif" : "mm"} text-[13px] text-ink-2 overflow-hidden whitespace-nowrap text-ellipsis`}
+                      className={`${h.kind === "latin" ? "serif" : "mm leading-[2.5]"} text-[13px] text-ink-2 overflow-hidden whitespace-nowrap text-ellipsis`}
                     >
                       {h.query}
                     </span>
