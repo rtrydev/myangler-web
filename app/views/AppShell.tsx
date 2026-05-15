@@ -243,7 +243,7 @@ function AppShellReady({
       className="h-dvh overflow-hidden bg-bg text-ink paper-tex relative"
       data-testid="app-shell"
     >
-      <div className="h-full lg:grid lg:grid-cols-[220px_1fr_380px]">
+      <div className="h-full lg:grid lg:grid-cols-[220px_1fr_380px] lg:grid-rows-[minmax(0,1fr)]">
         {/* Desktop sidebar */}
         <aside
           className="hidden lg:flex flex-col bg-bg-2 border-r border-border py-5"

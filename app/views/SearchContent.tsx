@@ -99,7 +99,7 @@ function IdleView({
 }) {
   return (
     <div
-      className="flex-1 px-5 pt-2 pb-5 overflow-y-auto no-scroll paper-tex flex flex-col"
+      className="flex-1 min-h-0 px-5 pt-2 pb-5 overflow-y-auto no-scroll paper-tex flex flex-col"
       data-testid="idle-view"
     >
       <div className="flex flex-col items-center pt-6 gap-4">
@@ -187,7 +187,7 @@ function BreakdownView({
   const wordCount = knownTokens.length;
   return (
     <div
-      className="flex-1 overflow-y-auto no-scroll paper-tex"
+      className="flex-1 min-h-0 overflow-y-auto no-scroll paper-tex"
       data-testid="breakdown-view"
     >
       <div className="px-4 pt-1 pb-4">
@@ -262,7 +262,7 @@ function ResultsView({
   if (rows.length === 0) {
     return (
       <div
-        className="flex-1 overflow-y-auto no-scroll paper-tex px-5 py-8 text-center"
+        className="flex-1 min-h-0 overflow-y-auto no-scroll paper-tex px-5 py-8 text-center"
         data-testid="results-empty"
       >
         <Eyebrow>No matches</Eyebrow>
@@ -275,7 +275,7 @@ function ResultsView({
   }
   return (
     <div
-      className="flex-1 overflow-y-auto no-scroll paper-tex"
+      className="flex-1 min-h-0 overflow-y-auto no-scroll paper-tex"
       data-testid="results-view"
     >
       <div className="px-4 pt-2 flex justify-between items-center">

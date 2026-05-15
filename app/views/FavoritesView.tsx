@@ -74,7 +74,7 @@ export function FavoritesView({ items, onSelect }: FavoritesViewProps) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto no-scroll">
+      <div className="flex-1 min-h-0 overflow-y-auto no-scroll">
         {filtered.length === 0 ? (
           <div className="px-5 py-10 text-center" data-testid="favorites-empty">
             <Eyebrow>{items.length === 0 ? "Nothing saved yet" : "No matches"}</Eyebrow>

@@ -58,7 +58,7 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scroll">
+      <div className="flex-1 min-h-0 overflow-y-auto no-scroll">
         {items.length === 0 ? (
           <div className="px-5 py-10 text-center" data-testid="history-empty">
             <Eyebrow>No history yet</Eyebrow>
