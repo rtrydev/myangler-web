@@ -10,12 +10,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "sync:segmenter-asset": "node app/lib/segmenter/scripts/sync-asset.mjs"
+    "sync:segmenter-asset": "node app/lib/segmenter/scripts/sync-asset.mjs",
+    "sync:lookup-assets": "node app/lib/lookup/scripts/sync-assets.mjs",
+    "sync:frontend-assets": "npm run sync:segmenter-asset && npm run sync:lookup-assets"
   },
   "dependencies": {
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -25,6 +28,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^6.0.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
