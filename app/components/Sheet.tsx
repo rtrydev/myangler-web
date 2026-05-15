@@ -1,9 +1,9 @@
 "use client";
 
-// Bottom-sheet modal primitive. Renders a theme-aware dim scrim (via
-// `--modal-dim`), a backdrop blur, and a sheet with a soft upward
-// shadow + gold hairline highlight along the top edge — matching the
-// design system contract from the prototype.
+// Bottom-sheet modal primitive. Renders a transparent scrim (clickable
+// to close) and a sheet with a soft elevation shadow + gold hairline
+// highlight along the top edge — matching the design system contract
+// from the prototype.
 //
 // Reused for the entry detail (mobile bottom sheet over the search
 // pane) and the settings panel (hamburger-menu overlay). The scrim
@@ -44,11 +44,6 @@ export function Sheet({ open, onClose, label, children }: SheetProps) {
         aria-label={`Close ${label.toLowerCase()}`}
         onClick={onClose}
         className="absolute inset-0 cursor-default"
-        style={{
-          background: "var(--modal-dim)",
-          backdropFilter: "blur(2px)",
-          WebkitBackdropFilter: "blur(2px)",
-        }}
       />
       <div
         className="absolute left-0 right-0 bottom-0 bg-paper flex flex-col overflow-hidden"
