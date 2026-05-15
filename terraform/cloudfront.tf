@@ -6,6 +6,78 @@ resource "aws_cloudfront_origin_access_control" "site" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_response_headers_policy" "site" {
+  name    = "${replace(var.site_domain, ".", "-")}-headers"
+  comment = "Security headers for ${var.site_domain}"
+
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 63072000
+      include_subdomains         = true
+      preload                    = true
+      override                   = true
+    }
+
+    content_type_options {
+      override = true
+    }
+
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+
+    referrer_policy {
+      referrer_policy = "same-origin"
+      override        = true
+    }
+
+    # CSP is permissive about inline scripts/styles because Next.js's
+    # static export inlines bootstrap scripts and Tailwind/Next emit
+    # inline <style> tags — there is no nonce in a pre-rendered build to
+    # tighten this. Everything that *can* be locked down (object-src,
+    # base-uri, frame-ancestors, connect/img/font sources) is.
+    # `wasm-unsafe-eval` is required by sql.js.
+    content_security_policy {
+      content_security_policy = join("; ", [
+        "default-src 'self'",
+        "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "manifest-src 'self'",
+        "worker-src 'self' blob:",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+      ])
+      override = true
+    }
+  }
+
+  custom_headers_config {
+    items {
+      header   = "Permissions-Policy"
+      value    = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
+      override = true
+    }
+
+    items {
+      header   = "Cross-Origin-Opener-Policy"
+      value    = "same-origin"
+      override = true
+    }
+
+    items {
+      header   = "Cross-Origin-Resource-Policy"
+      value    = "same-origin"
+      override = true
+    }
+  }
+}
+
 resource "aws_cloudfront_function" "rewrite_uri" {
   name    = "${replace(var.site_domain, ".", "-")}-rewrite-uri"
   runtime = "cloudfront-js-2.0"
@@ -41,7 +113,8 @@ resource "aws_cloudfront_distribution" "site" {
     compress        = true
 
     # AWS managed cache policy: "CachingOptimized".
-    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+    cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.site.id
 
     function_association {
       event_type   = "viewer-request"
