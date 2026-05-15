@@ -53,3 +53,8 @@ data/*
 # (~32 MB) — the data-pipeline output is the single source of truth.
 /public/data/
 
+# sql.js WASM binary — copied from node_modules/sql.js/dist/ by the
+# `postinstall` hook (see `sync:sqljs-wasm`). Not committed: the `sql.js`
+# package version pinned in package.json is the source of truth.
+/public/sql-wasm.wasm
+

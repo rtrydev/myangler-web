@@ -28,8 +28,8 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Myangler · Design System",
-  description: "Reusable components for the Myangler dictionary — parchment, lacquer, saffron.",
+  title: "Myangler · Burmese ↔ English",
+  description: "A pocket Burmese–English dictionary. Offline-first, parchment-and-lacquer themed.",
 };
 
 export default function RootLayout({

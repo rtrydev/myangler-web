@@ -7,12 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "node app/lib/lookup/scripts/sync-sqljs-wasm.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "sync:segmenter-asset": "node app/lib/segmenter/scripts/sync-asset.mjs",
     "sync:lookup-assets": "node app/lib/lookup/scripts/sync-assets.mjs",
-    "sync:frontend-assets": "npm run sync:segmenter-asset && npm run sync:lookup-assets"
+    "sync:sqljs-wasm": "node app/lib/lookup/scripts/sync-sqljs-wasm.mjs",
+    "sync:frontend-assets": "npm run sync:segmenter-asset && npm run sync:lookup-assets && npm run sync:sqljs-wasm"
   },
   "dependencies": {
     "next": "16.2.6",

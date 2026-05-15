@@ -12,7 +12,8 @@ This project ships a first-party design system. **It must be used.** Building a 
 
 - **Tokens & utility classes:** `app/globals.css` — CSS variables for the parchment/lacquer/saffron palette (`--bg`, `--paper`, `--ink`, `--ink-2`, `--ink-3`, `--ink-faint`, `--gold`, `--gold-soft`, `--ruby`, `--ruby-soft`, `--jade`, `--border`, `--border-2`, `--surface`, `--surface-2`, `--shadow*`, `--modal-*`) with full dark-mode overrides under `.dark`. Tokens are also registered as Tailwind colors (`bg-paper`, `text-ink-2`, `border-gold`, etc.) and fonts (`font-serif`, `font-mm`, `font-ui`, `font-mono`).
 - **Components:** `app/components/` — every reusable primitive lives here, each with a co-located `*.test.tsx`.
-- **Showcase:** `app/page.tsx` — live reference of every component, color token, and typography family. Open it before designing a new screen.
+- **Showcase:** `app/system/page.tsx` (route `/system`) — live reference of every component, color token, and typography family. Open it before designing a new screen.
+- **App views:** `app/views/` — composed screens that make up the running dictionary app at `/`. Not part of the design system; tests live alongside as `*.test.tsx` and exercise the views with a fixture engine via `app/lib/app/__fixtures__/buildAppFixture.tsx`.
 
 ## Components and what to use them for
 
@@ -28,11 +29,13 @@ This project ships a first-party design system. **It must be used.** Building a 
 | `TabBar` | Bottom navigation between top-level views | A flex row of buttons with icons |
 | `Logo`, `Wordmark` | Brand mark and lockup | An `<Image>` import of the logo |
 | `Icon.*` (16 icons) | All icon usage | Inline SVG or a new icon library |
+| `EntryDetail` | Full entry view (headword, IPA/POS, glosses, forms, action bar) | A bespoke detail panel in the desktop rail or modal |
+| `Sheet` | Bottom-sheet modal wrapper (theme-aware dim + shadow + gold hairline) — wrap entry detail, settings, any future overlay panel | A custom modal/portal/dialog |
 | `ThemeToggle`, `AccentSwitcher` | Light/dark switching and accent remap | A separate state machine touching `document.documentElement` |
 
 ## Rules for using the system
 
-1. **Reach for the component first.** Before writing any JSX, scan `app/components/` and `app/page.tsx`. If a component covers the use case — even approximately — use it.
+1. **Reach for the component first.** Before writing any JSX, scan `app/components/` and `app/system/page.tsx`. If a component covers the use case — even approximately — use it.
 2. **No bespoke re-implementations.** Creating a "view-specific" button, chip, search box, etc. is forbidden. If a variant is genuinely missing, **extend the existing component** (add a variant, add a prop) rather than forking it for one screen.
 3. **Compose, don't fork.** Build new screens by composing existing primitives. If a screen feels like it needs custom styling, first ask whether a token (`var(--gold)`, `text-ink-3`) or an existing component already expresses it.
 4. **Use design tokens, not hex codes.** Colors come from CSS variables / Tailwind tokens. Hard-coding a hex like `#B07820` instead of `var(--gold)` is the same mistake as forking a component — it breaks theme/accent switching.
@@ -45,7 +48,7 @@ When a real gap exists:
 
 - Add the variant or prop to the existing component (`app/components/<Name>.tsx`).
 - Update the co-located test (`app/components/<Name>.test.tsx`) to cover the new behavior — accessibility, keyboard, callbacks where applicable.
-- Add an example to the showcase (`app/page.tsx`).
+- Add an example to the showcase (`app/system/page.tsx`).
 - Keep the API minimal: do not add props that only one consumer needs.
 
 `npm test` must stay green; tests query by role/label/text and assert on user-perceivable outcomes (see the existing tests for the pattern).

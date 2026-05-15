@@ -35,6 +35,30 @@ describe("ThemeToggle", () => {
     await user.keyboard("{Enter}");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
+
+  test("controlled mode: value drives the dark class and clicks call onChange", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = render(<ThemeToggle value={false} onChange={onChange} />);
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: /toggle theme/i }));
+    expect(onChange).toHaveBeenCalledWith(true);
+    // Controlled — internal state is ignored, so re-render with value=true.
+    rerender(<ThemeToggle value={true} onChange={onChange} />);
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+  });
+
+  test("controlled mode exposes the current value via aria-pressed", () => {
+    const { rerender } = render(<ThemeToggle value={false} onChange={() => {}} />);
+    expect(
+      screen.getByRole("button", { name: /toggle theme/i }),
+    ).toHaveAttribute("aria-pressed", "false");
+    rerender(<ThemeToggle value={true} onChange={() => {}} />);
+    expect(
+      screen.getByRole("button", { name: /toggle theme/i }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
 });
 
 function ControlledAccent({ initial = "ruby" as Accent, onChange = vi.fn() }) {

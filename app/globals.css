@@ -26,6 +26,13 @@
   --shadow-lg: 0 2px 4px rgba(36, 21, 9, 0.06), 0 24px 48px -12px rgba(36, 21, 9, 0.22);
   --modal-dim: rgba(60, 40, 18, 0.36);
   --modal-shadow: 0 -18px 44px -10px rgba(36, 21, 9, 0.22);
+
+  /* Swatch tokens — frozen color references for the accent picker. The
+     `[data-accent]` rules below remap `--ruby`, so anything using
+     `var(--ruby)` shifts with the selected accent. The swatches need to
+     keep showing what each accent *is*, so they sample these instead. */
+  --swatch-ruby: #8A2727;
+  --swatch-indigo: #4F5B8B;
 }
 
 .dark {
@@ -50,13 +57,18 @@
   --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 48px -12px rgba(0, 0, 0, 0.7);
   --modal-dim: rgba(6, 3, 1, 0.62);
   --modal-shadow: 0 -20px 56px -12px rgba(0, 0, 0, 0.7);
+  --swatch-ruby: #C75555;
+  --swatch-indigo: #8088B8;
 }
 
-/* Accent remap — apply to a wrapper [data-accent] element to swap the primary hue */
+/* Accent remap — apply to a wrapper [data-accent] element to swap the
+   primary hue. Must live on the SAME element as `.dark` so the dark +
+   indigo combined rule below can match — `AppShell` puts both on
+   `<html>` (`document.documentElement`). */
 [data-accent="gold"]    { --ruby: var(--gold);   --ruby-soft: var(--gold-soft); }
 [data-accent="jade"]    { --ruby: var(--jade);   --ruby-soft: var(--jade); }
-[data-accent="indigo"]  { --ruby: #4F5B8B;       --ruby-soft: #7079A8; }
-.dark[data-accent="indigo"] { --ruby: #8088B8; --ruby-soft: #A8AED4; }
+[data-accent="indigo"]  { --ruby: var(--swatch-indigo); --ruby-soft: #7079A8; }
+.dark[data-accent="indigo"] { --ruby: var(--swatch-indigo); --ruby-soft: #A8AED4; }
 
 /* Tailwind theme — register tokens as utilities */
 @theme inline {

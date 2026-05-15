@@ -1,0 +1,131 @@
+"use client";
+
+// Favorites tab: every entry the user has saved. Clicking an item opens
+// it (re-resolves through the engine). Empty state nudges the user to
+// save something.
+
+import { useMemo, useState } from "react";
+import { Chip } from "@/app/components/Chip";
+import { StarFillIcon } from "@/app/components/Icon";
+import { Eyebrow } from "@/app/components/Ornament";
+import type { FavoriteItem } from "@/app/lib/app/types";
+
+type FavoritesViewProps = {
+  items: readonly FavoriteItem[];
+  onSelect?: (item: FavoriteItem) => void;
+};
+
+export function FavoritesView({ items, onSelect }: FavoritesViewProps) {
+  const tags = useMemo(() => {
+    const set = new Set<string>();
+    for (const i of items) if (i.tag) set.add(i.tag);
+    return ["all", ...set];
+  }, [items]);
+
+  const [active, setActive] = useState<string>("all");
+
+  const filtered = useMemo(
+    () => (active === "all" ? items : items.filter(i => i.tag === active)),
+    [items, active],
+  );
+
+  return (
+    <div
+      className="flex-1 flex flex-col overflow-hidden paper-tex"
+      data-testid="favorites-view"
+    >
+      <div className="px-5 pt-1 pb-3.5 flex items-baseline justify-between">
+        <div>
+          <h2 className="serif text-[26px] text-ink tracking-tight leading-none">
+            Saved
+          </h2>
+          <div className="mm text-[13px] text-gold mt-1">သိမ်းဆည်းထားသော</div>
+        </div>
+        <span className="ui text-[11px] text-ink-3">
+          {items.length} {items.length === 1 ? "word" : "words"}
+        </span>
+      </div>
+
+      {tags.length > 1 && (
+        <div className="px-5 pb-3">
+          <div className="flex gap-1.5 flex-wrap">
+            {tags.map(tag => {
+              const isActive = tag === active;
+              return (
+                <Chip
+                  key={tag}
+                  role="button"
+                  tabIndex={0}
+                  variant={isActive ? "solid" : "default"}
+                  onClick={() => setActive(tag)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setActive(tag);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
+                >
+                  {tag}
+                </Chip>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto no-scroll">
+        {filtered.length === 0 ? (
+          <div className="px-5 py-10 text-center" data-testid="favorites-empty">
+            <Eyebrow>{items.length === 0 ? "Nothing saved yet" : "No matches"}</Eyebrow>
+            <p className="serif italic text-ink-2 mt-3">
+              {items.length === 0
+                ? "Open an entry and tap Save to add it to your library."
+                : "No saved entries match the selected tag."}
+            </p>
+          </div>
+        ) : (
+          <ul className="list-none p-0 m-0">
+            {filtered.map((item, i) => (
+              <li
+                key={item.entryId}
+                className="border-b border-border last:border-b-0"
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelect?.(item)}
+                  className="w-full flex justify-between items-start px-5 py-3.5 gap-3 text-left hover:bg-surface cursor-pointer"
+                  data-testid={`favorite-item-${i}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="mm text-xl text-ink leading-tight">
+                      {item.headword}
+                    </div>
+                    <div className="serif italic text-[13px] text-ink-3 mt-1">
+                      {item.glosses.join("; ")}
+                    </div>
+                    {item.tag && (
+                      <div className="mt-1.5">
+                        <Chip
+                          style={{
+                            fontSize: 9.5,
+                            padding: "2px 8px",
+                          }}
+                        >
+                          {item.tag}
+                        </Chip>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-gold">
+                    <StarFillIcon size={18} />
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
