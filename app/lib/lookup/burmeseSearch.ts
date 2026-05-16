@@ -14,23 +14,21 @@ import {
 import type { Entry, ResultRow } from "./types";
 import { Tier } from "./types";
 
-/** Search the dictionary with a Burmese query: exact headword first, then
- *  syllable-fuzzy near matches. Same merging rules and top-10 cap as
- *  reverse lookup. Fuzzy is always included at low priority and never
- *  preempts a real headword match. */
-export function searchBurmese(
+/** One Burmese-search pass at a given syllable fuzzy threshold. The
+ *  fallback driver below composes multiple passes when the default
+ *  threshold returns nothing — same empty-fallback discipline as
+ *  `lookupReverse`. */
+function searchBurmeseOnce(
   model: DictionaryModel,
   query: string,
+  fuzzyThreshold: number,
 ): ResultRow[] {
-  const trimmed = query.trim();
-  if (!trimmed) return [];
-
   const buckets = makeBucketMap();
 
   // ---- Exact headword tier --------------------------------------------
-  const exact: Entry[] = model.db.entriesByHeadword(trimmed);
+  const exact: Entry[] = model.db.entriesByHeadword(query);
   if (exact.length > 0) {
-    const b = bucketEnsure(buckets, trimmed);
+    const b = bucketEnsure(buckets, query);
     b.tier = Tier.EXACT;
     b.fuzzy = false;
     b.distance = 0;
@@ -40,12 +38,9 @@ export function searchBurmese(
   // ---- Fuzzy tier (syllable-level) ------------------------------------
   // Tokenize with the segmenter's syllable splitter — same module the
   // BK-tree was built with at build time.
-  const probe = segmentSyllables(trimmed);
-  if (probe.length > 0) {
-    const matches = model.bktreeMy.query(
-      probe,
-      model.config.fuzzyThresholdMy,
-    );
+  const probe = segmentSyllables(query);
+  if (probe.length > 0 && fuzzyThreshold > 0) {
+    const matches = model.bktreeMy.query(probe, fuzzyThreshold);
     for (const fm of matches) {
       const headword = fm.value.join("");
       // The probe coming back at distance 0 — the exact-tier pass
@@ -61,4 +56,29 @@ export function searchBurmese(
   }
 
   return rankAndResolve(model, buckets, model.config.resultLimit);
+}
+
+/** Search the dictionary with a Burmese query: exact headword first, then
+ *  syllable-fuzzy near matches. Same merging rules and top-10 cap as
+ *  reverse lookup. Fuzzy is always included at low priority and never
+ *  preempts a real headword match.
+ *
+ *  Runs the default fuzzy threshold first and only widens to one extra
+ *  syllable of edit distance when nothing came back — same empty-
+ *  fallback discipline as `lookupReverse`. Bumping the threshold further
+ *  produces noisy near-matches that aren't typos of the query, so the
+ *  ladder is intentionally short. */
+export function searchBurmese(
+  model: DictionaryModel,
+  query: string,
+): ResultRow[] {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const base = model.config.fuzzyThresholdMy;
+  for (const threshold of [base, base + 1]) {
+    const rows = searchBurmeseOnce(model, trimmed, threshold);
+    if (rows.length > 0) return rows;
+  }
+  return [];
 }

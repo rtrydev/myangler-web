@@ -20,7 +20,16 @@
 //
 // Stopwords: the inverted index already excluded them at build time. If
 // the user queries a stopword, the exact/head/incidental tiers return
-// nothing; the fuzzy tier may still fire and turn up near-misses.
+// nothing from `postings`; the empty-fallback passes below recover
+// stopword-only entries via `gloss_groups`.
+//
+// Empty-fallback discipline: the default-config pass enforces every
+// pruning gate (`maxGlossPosition`, `minQueryLengthForFuzzyEn`, and the
+// "no single-token gloss_groups" rule) for tight, high-relevance results.
+// When that pass returns nothing — typically because the query is a
+// stopword, a buried-position meaning, or a short word that fuzzy is
+// gated off for — wider passes progressively drop those gates so a valid
+// query never silently produces zero results.
 
 import type { DictionaryModel } from "./loader";
 import { normalizeGloss } from "./normalize";
@@ -62,35 +71,34 @@ function addEntry(b: Bucket, entryId: number): void {
   b.entryIds.push(entryId);
 }
 
-/** Reverse-lookup: produce up to `config.resultLimit` ranked result rows
- *  for the English query. */
-export function lookupReverse(
+/** Knobs the single-pass body cares about. Carved out so the empty-
+ *  fallback driver below can construct relaxed passes by overriding
+ *  individual fields without re-deriving the full `LookupConfig`. */
+interface ReversePassOptions {
+  maxGlossPosition: number;
+  minQueryLengthForFuzzyEn: number;
+  fuzzyThresholdEn: number;
+  /** When true, single-token queries also consult `gloss_groups`. The
+   *  default pass leaves this off so the `maxGlossPosition` gate stays
+   *  meaningful for the common single-token case; the empty-fallback
+   *  driver flips it on so stopwords and buried-position exact glosses
+   *  still surface. */
+  includeSingleTokenGlossGroups: boolean;
+}
+
+/** One reverse-lookup pass at a given knob configuration. Pure function
+ *  of `(model, queryToken, opts)`; the driver below composes multiple
+ *  passes for empty-fallback behavior. */
+function lookupReverseOnce(
   model: DictionaryModel,
-  query: string,
+  queryToken: string,
+  opts: ReversePassOptions,
 ): ResultRow[] {
-  const normalized = normalizeGloss(query);
-  if (!normalized) return [];
-
-  // The inverted index (`postings`) keys on single gloss-words. For a
-  // single-word query that path captures every real tier (exact / head /
-  // incidental). For a multi-word query like "go up" postings has no row
-  // — the EXACT tier instead lives on `gloss_groups`, which records
-  // every entry that owns the full normalized gloss.
-  const queryToken = normalized;
-
   const buckets = new Map<string, Bucket>();
-  const maxPos = model.config.maxGlossPosition;
-  // The relevance gate is meaningful for single-word queries: the
-  // postings table is keyed by individual gloss-words, so the
-  // `gloss_index` filter implies "the matched word is among the
-  // entry's top-N meanings". For a multi-word query like "go up",
-  // postings carries no row (postings keys on single words); we fall
-  // back to the gloss_groups path below, which has no per-entry
-  // position information.
   const isMultiToken = /\s/.test(queryToken);
 
   // ---- Real tiers (exact / head / incidental) -------------------------
-  for (const p of model.db.postingsForWord(queryToken, maxPos)) {
+  for (const p of model.db.postingsForWord(queryToken, opts.maxGlossPosition)) {
     const key = p.normalizedGloss;
     if (!key) continue;
     const b = ensureBucket(buckets, key);
@@ -101,12 +109,13 @@ export function lookupReverse(
     addEntry(b, p.entryId);
   }
 
-  // Multi-word exact-gloss safety net. Only fires for multi-word
-  // queries — for single-token queries every entry returned here is
-  // already in the postings result above (postings tier=EXACT covers
-  // the same set), and re-adding them would bypass the
-  // `maxGlossPosition` relevance gate.
-  if (isMultiToken) {
+  // Full-gloss exact match via `gloss_groups`. Always on for multi-word
+  // queries (postings is keyed by single words and has no row for them).
+  // For single-token queries the default pass keeps this off — the
+  // postings tier=EXACT path covers the same set under the position gate
+  // — but the empty-fallback driver flips it on so stopwords and
+  // buried-position exact glosses still surface.
+  if (isMultiToken || opts.includeSingleTokenGlossGroups) {
     const exactGlossEntries = model.db.entryIdsForNormalizedGloss(queryToken);
     if (exactGlossEntries.length > 0) {
       const b = ensureBucket(buckets, queryToken);
@@ -118,22 +127,23 @@ export function lookupReverse(
   }
 
   // ---- Fuzzy tier -----------------------------------------------------
-  // Always run fuzzy when the query is long enough — the spec includes
-  // fuzzy alongside real-tier matches (§2.4.2), but distance-1 on a
-  // short query (rain → pain/brain/drain) lands on different words,
-  // not typos of the same word, so a length floor is applied. Sort
+  // Run fuzzy when the query is long enough — the spec includes fuzzy
+  // alongside real-tier matches (§2.4.2), but distance-1 on a short
+  // query (rain → pain/brain/drain) lands on different words, not typos
+  // of the same word, so a length floor is applied. The empty-fallback
+  // driver may drop the floor to 0 to recover any signal at all. Sort
   // discipline still enforces "never preempts": fuzzy buckets share
   // `tier === FUZZY` and sort after real rows.
-  if (queryToken.length >= model.config.minQueryLengthForFuzzyEn) {
+  if (queryToken.length >= opts.minQueryLengthForFuzzyEn) {
     const fuzzyMatches = model.bktreeEn.query(
       queryToken,
-      model.config.fuzzyThresholdEn,
+      opts.fuzzyThresholdEn,
     );
     for (const fm of fuzzyMatches) {
       // The probe itself comes back at distance 0 — that contributes
       // nothing the real-tier pass didn't already capture.
       if (fm.value === queryToken) continue;
-      for (const p of model.db.postingsForWord(fm.value, maxPos)) {
+      for (const p of model.db.postingsForWord(fm.value, opts.maxGlossPosition)) {
         const key = p.normalizedGloss;
         if (!key) continue;
         const b = ensureBucket(buckets, key);
@@ -149,6 +159,62 @@ export function lookupReverse(
   }
 
   return rankAndResolve(model, buckets, model.config.resultLimit);
+}
+
+/** Reverse-lookup: produce up to `config.resultLimit` ranked result rows
+ *  for the English query.
+ *
+ *  Runs a default-config pass first (every pruning gate active) and only
+ *  falls back to wider passes when the previous one returned nothing.
+ *  The fallback ladder exists because stopwords ("that", "this", …) are
+ *  excluded from the `postings` table at build time and queries whose
+ *  match lives past the `maxGlossPosition` cap would otherwise vanish.
+ *  Each pass relaxes exactly one gate so the *first* widening that
+ *  yields anything wins — short of the user typing a typo we still
+ *  prefer narrow, high-relevance results. */
+export function lookupReverse(
+  model: DictionaryModel,
+  query: string,
+): ResultRow[] {
+  const normalized = normalizeGloss(query);
+  if (!normalized) return [];
+
+  // The inverted index (`postings`) keys on single gloss-words. For a
+  // single-word query that path captures every real tier (exact / head /
+  // incidental). For a multi-word query like "go up" postings has no row
+  // — the EXACT tier instead lives on `gloss_groups`, which records
+  // every entry that owns the full normalized gloss.
+  const queryToken = normalized;
+
+  // Pass ladder: tight → drop position gate + open single-token
+  // gloss_groups → also drop fuzzy length gate. Stops at the first pass
+  // that yields any rows.
+  const passes: ReversePassOptions[] = [
+    {
+      maxGlossPosition: model.config.maxGlossPosition,
+      minQueryLengthForFuzzyEn: model.config.minQueryLengthForFuzzyEn,
+      fuzzyThresholdEn: model.config.fuzzyThresholdEn,
+      includeSingleTokenGlossGroups: false,
+    },
+    {
+      maxGlossPosition: Number.POSITIVE_INFINITY,
+      minQueryLengthForFuzzyEn: model.config.minQueryLengthForFuzzyEn,
+      fuzzyThresholdEn: model.config.fuzzyThresholdEn,
+      includeSingleTokenGlossGroups: true,
+    },
+    {
+      maxGlossPosition: Number.POSITIVE_INFINITY,
+      minQueryLengthForFuzzyEn: 0,
+      fuzzyThresholdEn: model.config.fuzzyThresholdEn,
+      includeSingleTokenGlossGroups: true,
+    },
+  ];
+
+  for (const opts of passes) {
+    const rows = lookupReverseOnce(model, queryToken, opts);
+    if (rows.length > 0) return rows;
+  }
+  return [];
 }
 
 /** Shared post-processing: turn the bucket map into ranked, resolved

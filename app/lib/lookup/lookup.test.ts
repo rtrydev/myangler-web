@@ -251,6 +251,21 @@ describe("lookupReverse — tiered ranking", () => {
     expect(exact?.tier).toBe(Tier.EXACT);
     expect(exact!.entries.map((e) => e.entryId)).toEqual([2]);
   });
+
+  test("stopword query falls back to gloss_groups", () => {
+    // "a" is a stopword — excluded from postings at build time. The
+    // default pass returns nothing; the empty-fallback driver re-runs
+    // with single-token gloss_groups enabled and surfaces entry 10
+    // (headword ဌ, gloss "a"). Mirrors the production bug where
+    // searching "that" returned no results even though entries with
+    // that gloss exist.
+    const rows = lookupReverse(model, "a");
+    const row = rows.find((r) => r.key === "a");
+    expect(row).toBeDefined();
+    expect(row!.fuzzy).toBe(false);
+    expect(row!.tier).toBe(Tier.EXACT);
+    expect(row!.entries.map((e) => e.entryId)).toContain(10);
+  });
 });
 
 describe("searchBurmese", () => {
