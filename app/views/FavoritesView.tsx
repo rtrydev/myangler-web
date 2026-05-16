@@ -7,7 +7,7 @@
 import { useMemo, useState } from "react";
 import { Chip } from "@/app/components/Chip";
 import { StarFillIcon } from "@/app/components/Icon";
-import { Eyebrow } from "@/app/components/Ornament";
+import { Eyebrow, RuleGold } from "@/app/components/Ornament";
 import type { FavoriteItem } from "@/app/lib/app/types";
 
 type FavoritesViewProps = {
@@ -34,20 +34,25 @@ export function FavoritesView({ items, onSelect }: FavoritesViewProps) {
       className="flex-1 flex flex-col overflow-hidden paper-tex"
       data-testid="favorites-view"
     >
-      <div className="px-5 pt-1 pb-3.5 flex items-baseline justify-between">
+      <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-start gap-3 shrink-0">
         <div>
-          <h2 className="serif text-[26px] text-ink tracking-tight leading-tight">
+          <div className="eyebrow eyebrow-gold mb-1.5">Library</div>
+          <h2 className="serif text-[28px] leading-tight text-ink tracking-tight">
             Saved
           </h2>
-          <div className="mm text-[13px] text-gold mt-1 leading-snug">သိမ်းဆည်းထားသော</div>
+          <div className="mm text-sm text-gold mt-1.5 leading-snug">သိမ်းဆည်းထားသော</div>
         </div>
-        <span className="ui text-[11px] text-ink-3">
+        <span className="ui text-[11px] text-ink-3 mt-1">
           {items.length} {items.length === 1 ? "word" : "words"}
         </span>
       </div>
 
+      <div className="px-5.5 shrink-0">
+        <RuleGold />
+      </div>
+
       {tags.length > 1 && (
-        <div className="px-5 pb-3">
+        <div className="px-5 pt-3 pb-3">
           <div className="flex gap-1.5 flex-wrap">
             {tags.map(tag => {
               const isActive = tag === active;

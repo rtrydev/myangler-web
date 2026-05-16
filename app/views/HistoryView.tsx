@@ -7,7 +7,7 @@
 import { Button } from "@/app/components/Button";
 import { Chip } from "@/app/components/Chip";
 import { TrashIcon } from "@/app/components/Icon";
-import { Eyebrow } from "@/app/components/Ornament";
+import { Eyebrow, RuleGold } from "@/app/components/Ornament";
 import type { HistoryItem } from "@/app/lib/app/types";
 
 type HistoryViewProps = {
@@ -39,12 +39,13 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
       className="flex-1 flex flex-col overflow-hidden paper-tex"
       data-testid="history-view"
     >
-      <div className="px-5 pt-1 pb-3.5 flex items-baseline justify-between">
+      <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-start gap-3 shrink-0">
         <div>
-          <h2 className="serif text-[26px] text-ink tracking-tight leading-tight">
+          <div className="eyebrow eyebrow-gold mb-1.5">Recent</div>
+          <h2 className="serif text-[28px] leading-tight text-ink tracking-tight">
             History
           </h2>
-          <div className="mm text-[13px] text-gold mt-1 leading-snug">သမိုင်း</div>
+          <div className="mm text-sm text-gold mt-1.5 leading-snug">သမိုင်း</div>
         </div>
         {items.length > 0 && onClear && (
           <Button
@@ -58,7 +59,11 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
         )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto no-scroll">
+      <div className="px-5.5 shrink-0">
+        <RuleGold />
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto no-scroll pt-2">
         {items.length === 0 ? (
           <div className="px-5 py-10 text-center" data-testid="history-empty">
             <Eyebrow>No history yet</Eyebrow>
