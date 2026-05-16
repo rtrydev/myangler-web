@@ -123,9 +123,9 @@ as Latin because the ASCII letters trigger the rule.
 
 | `detectScript` | `search()` route | Notes |
 |---|---|---|
-| `burmese` | Word-segment + eager exact forward-lookup per token → `breakdown` | Spec §2.2. |
-| `mixed`   | Same as Burmese, with `mixedInput: true` on the result | Burmese segmenter handles non-Burmese runs per Task 04. |
-| `latin`   | `lookupReverse` → `reverse` (top-N) | Spec §2.4. |
+| `burmese` | Word-segment; **≥ 2 tokens** → eager exact forward-lookup per token → `breakdown`. **1 token** → `searchBurmese` → `reverse` (`script: "burmese"`). | Spec §2.2 for the breakdown path; the single-block collapse mirrors the Latin path so the search-tab view is driven by `segmented.length`, not script. |
+| `mixed`   | Same as Burmese, with `mixedInput: true` on a `breakdown` result. (A mixed input that collapses to one segmented token also falls into the `reverse` branch.) | Burmese segmenter handles non-Burmese runs per Task 04. |
+| `latin`   | English-segment; **≥ 2 segments** → `breakdown`. **1 segment** → `lookupReverse` → `reverse` (`script: "latin"`). | Spec §2.4. The single-segment collapse covers natural single words, known multi-word phrases ("new year"), article-absorbed runs ("a fish"), and "to <verb>" infinitives. |
 | `unknown` | `unrecognized` — no engine call | |
 | empty after trim | `empty` — no engine call | |
 | over the length cap | `too_long` — no engine call | Cap is checked *before* trim, against the raw input. |
@@ -153,16 +153,26 @@ calling the lookup module's `lookupForwardWithFuzzy` directly on a
 specific token if the UI later adds a "did you mean?" affordance per
 block.
 
-### Burmese single-word input stays a `breakdown`
+### Single-block inputs collapse to `reverse`, regardless of script
 
-A Burmese input that segments to a single token still returns
-`{ kind: "breakdown", tokens: [{token, result}] }` — **not** a
-different result kind. Rationale: the UI for the block sequence
-already handles N=1 as the degenerate case; conflating "user typed one
-word into search-as-you-type" with a separate result shape would
-require UI branching for no benefit. Callers wanting explicit
-single-word search-box semantics (exact + fuzzy + top-N) should call
-`singleWordSearch` instead of `search`.
+Whenever segmentation produces exactly one block, `search()` returns
+`{ kind: "reverse", script, rows }` — the ranked single-word view —
+rather than a one-tile breakdown. This holds for both the Burmese path
+(routed through `searchBurmese`: exact headword + syllable fuzzy + top-N)
+and the Latin path (routed through `lookupReverse`). The decision is
+driven off `segmented.length`, not the surface shape of the input, so:
+
+- A natural Burmese single word (`မြန်မာ`) and a Latin single word
+  (`water`) both render as the ranked results list.
+- An English input that collapses to one segment — a known multi-word
+  phrase (`new year`), an article-absorbed run (`a fish`), or a
+  `to <verb>` infinitive (`to be`) — also renders as `reverse`.
+- Sentence inputs (≥ 2 segments) keep the tile breakdown.
+
+This makes the search-tab view consistent: "one block in, single-word
+view out." `singleWordSearch` remains available as a separate API
+surface for callers that always want the search-box semantics regardless
+of how the orchestrator's segmenters would route the input.
 
 ## Result shape
 
@@ -173,9 +183,10 @@ type SearchResult =
   | { kind: "empty" }
   | { kind: "too_long"; limit: number; length: number }
   | { kind: "unrecognized" }
-  | { kind: "breakdown"; mixedInput: boolean;
+  | { kind: "breakdown"; script: "burmese" | "english";
+      mixedInput: boolean;
       tokens: { token: string; result: ForwardResult | null }[] }
-  | { kind: "reverse"; rows: ResultRow[] };
+  | { kind: "reverse"; script: "burmese" | "latin"; rows: ResultRow[] };
 ```
 
 `SingleWordResult` mirrors the edge-case kinds but its "real" kinds are:
@@ -208,6 +219,7 @@ search(engine, "12345");
 search(engine, "မြန်မာစကား");
 // → {
 //     kind: "breakdown",
+//     script: "burmese",
 //     mixedInput: false,
 //     tokens: [
 //       { token: "မြန်မာ", result: { entry: {...}, mergedPeers: [...] } },
@@ -215,11 +227,17 @@ search(engine, "မြန်မာစကား");
 //     ],
 //   }
 
+search(engine, "မြန်မာ");
+// → { kind: "reverse", script: "burmese", rows: [...] }   // single-block collapse
+
 search(engine, "မြန်မာ test");
-// → { kind: "breakdown", mixedInput: true, tokens: [...] }
+// → { kind: "breakdown", script: "burmese", mixedInput: true, tokens: [...] }
 
 search(engine, "water");
-// → { kind: "reverse", rows: [...up to 10 ResultRows...] }
+// → { kind: "reverse", script: "latin", rows: [...up to 10 ResultRows...] }
+
+search(engine, "new year");
+// → { kind: "reverse", script: "latin", rows: [...] }     // collapses to one segment
 
 singleWordSearch(engine, "မြန်မာ");
 // → { kind: "single_word", script: "burmese", rows: [...] }
@@ -260,7 +278,9 @@ Used for:
 Used for:
 
 - `DictionaryModel` (the loaded dictionary model).
-- `lookupForward(model, headword)` — exact only, per segmented token.
+- `lookupForwardWithCompoundFallback(model, headword)` — exact only,
+  per segmented token (with a strict compound-fallback for segmenter-
+  emitted compounds; never a BK-tree near-miss).
 - `lookupReverse(model, query)` — Latin reverse lookup. The lookup
   module normalizes the query internally; the orchestrator does **not**
   duplicate normalization.
@@ -291,8 +311,8 @@ Run with `npm test` (vitest, jsdom).
 - `orchestrator.test.ts` — fixture-engine tests for every result kind
   (empty / too-long / unrecognized / breakdown / reverse / single-word),
   hit-and-miss tokens in the breakdown, mixed-input flagging, the
-  eager-exact policy, the single-token-stays-a-breakdown rule, load-once
-  caching, and result-shape serializability.
+  eager-exact policy, the single-block-collapses-to-reverse rule (for
+  both scripts), load-once caching, and result-shape serializability.
 - `smoke.test.ts` — loads the **real** synced `ngram.json` +
   `dictionary.sqlite` + BK-trees and exercises the orchestrator end to
   end. Skipped (with a placeholder) when assets are not synced.

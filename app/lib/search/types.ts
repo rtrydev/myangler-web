@@ -54,12 +54,12 @@ export interface UnrecognizedResult {
 }
 
 /** Sentence-style input: an ordered breakdown of segmented tokens, each
- *  carrying its eager exact-forward-lookup result. Returned for Burmese
- *  / mixed inputs (always — even a single-word Burmese query stays a
- *  one-token breakdown so the search-tab UX is consistent) and for
- *  multi-word English inputs (where the engine groups known multi-word
- *  glosses like "new year" into a single token). Single-word English
- *  queries skip this kind and produce a `reverse` result instead. */
+ *  carrying its eager exact-forward-lookup result. Returned only when
+ *  segmentation produces **two or more** tokens — single-block inputs
+ *  (whether the segmenter naturally emitted one token, or collapsed an
+ *  article-noun / known multi-word phrase / "to <verb>" infinitive into
+ *  one segment) are routed to `reverse` instead, so the user sees the
+ *  ranked single-word view regardless of script. */
 export interface BreakdownResult {
   kind: "breakdown";
   /** Discriminator on the input language. `"burmese"` covers Burmese
@@ -75,10 +75,19 @@ export interface BreakdownResult {
   tokens: BreakdownToken[];
 }
 
-/** Latin-only input: ranked top-N reverse-lookup result. */
+/** Single-block input: ranked top-N result list. Produced whenever
+ *  segmentation collapses the input to one block — a single Burmese
+ *  word (routed through `searchBurmese`) or a single English segment
+ *  (routed through `lookupReverse`, with the article-noun and "to verb"
+ *  collapses already applied by the English segmenter). */
 export interface ReverseResult {
   kind: "reverse";
-  /** Top-N rows produced by the lookup module's `lookupReverse`. */
+  /** Source script of the input. Drives the result header label
+   *  ("English → မြန်မာ" vs. "မြန်မာ → English") without changing the
+   *  row rendering. */
+  script: "burmese" | "latin";
+  /** Top-N rows produced by `lookupReverse` (Latin) or `searchBurmese`
+   *  (Burmese). */
   rows: ResultRow[];
 }
 

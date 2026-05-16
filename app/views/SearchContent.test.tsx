@@ -97,7 +97,13 @@ const fuzzyRow: ResultRow = {
 };
 const reverse: SearchResult = {
   kind: "reverse",
+  script: "latin",
   rows: [exactRow, partialRow, fuzzyRow],
+};
+const burmeseReverse: SearchResult = {
+  kind: "reverse",
+  script: "burmese",
+  rows: [exactRow],
 };
 
 describe("SearchContent · idle", () => {
@@ -243,6 +249,12 @@ describe("SearchContent · results", () => {
     expect(screen.getByText("close")).toBeInTheDocument();
   });
 
+  test("Burmese single-block reverse flips the direction label", () => {
+    render(<SearchContent result={burmeseReverse} />);
+    expect(screen.getByTestId("results-view")).toBeInTheDocument();
+    expect(screen.getByText("1 result · မြန်မာ → English")).toBeInTheDocument();
+  });
+
   test("clicking a row fires onSelectRow with the row's first entry", async () => {
     const user = userEvent.setup();
     const onSelectRow = vi.fn();
@@ -264,7 +276,9 @@ describe("SearchContent · results", () => {
   });
 
   test("empty reverse result shows the no-matches view", () => {
-    render(<SearchContent result={{ kind: "reverse", rows: [] }} />);
+    render(
+      <SearchContent result={{ kind: "reverse", script: "latin", rows: [] }} />,
+    );
     expect(screen.getByTestId("results-empty")).toBeInTheDocument();
     expect(screen.getByText(/couldn.?t find anything/i)).toBeInTheDocument();
   });
@@ -294,7 +308,11 @@ describe("SearchContent · results", () => {
         },
       ],
     };
-    render(<SearchContent result={{ kind: "reverse", rows: [groupedRow] }} />);
+    render(
+      <SearchContent
+        result={{ kind: "reverse", script: "latin", rows: [groupedRow] }}
+      />,
+    );
     const row = screen.getByTestId(`result-row-${groupedRow.entries[0].entryId}`);
     expect(within(row).getByText("ရေသန့်")).toBeInTheDocument();
     expect(within(row).getByText("သောက်ရေ")).toBeInTheDocument();

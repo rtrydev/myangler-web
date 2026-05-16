@@ -72,16 +72,20 @@ describe("search — Burmese path (segment + eager exact forward-lookup)", () =>
     expect(result.tokens[1].result).toBeNull();
   });
 
-  test("Burmese single-word input still produces a 'breakdown' of length 1", () => {
-    // Crucial routing decision: even though the input is one word, the
-    // orchestrator's main `search` keeps the breakdown shape — search-box
-    // semantics live in `singleWordSearch`.
+  test("Burmese single-word input collapses to the ranked 'reverse' view, symmetric with the Latin single-segment path", () => {
+    // Crucial routing decision: when the segmenter emits exactly one
+    // block, the orchestrator switches to the single-word ranked view
+    // (via `searchBurmese`) instead of rendering a one-tile breakdown.
+    // The same rule applies to single-segment Latin input — the search
+    // tab's view choice is driven by `segmented.length`, not script.
     const result = search(engine, "မြန်မာ");
-    expect(result.kind).toBe("breakdown");
-    if (result.kind !== "breakdown") throw new Error("unreachable");
-    expect(result.tokens).toHaveLength(1);
-    expect(result.tokens[0].token).toBe("မြန်မာ");
-    expect(result.tokens[0].result?.entry.entryId).toBe(0);
+    expect(result.kind).toBe("reverse");
+    if (result.kind !== "reverse") throw new Error("unreachable");
+    expect(result.script).toBe("burmese");
+    expect(result.rows.length).toBeGreaterThan(0);
+    // The exact-headword row should surface (fixture entryId 0).
+    const ids = result.rows.flatMap((r) => r.entries.map((e) => e.entryId));
+    expect(ids).toContain(0);
   });
 
   test("eager lookup is exact-only — miss tokens stay null instead of fuzzy-rescuing", () => {
@@ -314,7 +318,10 @@ describe("script detection drives routing", () => {
   // Smoke-level check that the orchestrator and `detectScript` agree on
   // the routing edges.
   test.each([
-    ["မြန်မာ", "burmese", "breakdown"],
+    // Single-block inputs collapse to 'reverse' regardless of script —
+    // the Burmese case used to stay a one-tile breakdown; it now mirrors
+    // the Latin single-segment behavior.
+    ["မြန်မာ", "burmese", "reverse"],
     ["speak", "latin", "reverse"],
     // "new year" is a known multi-word gloss in the fixture; the
     // segmenter collapses it to one segment, which the orchestrator

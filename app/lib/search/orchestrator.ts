@@ -19,7 +19,6 @@ import {
   type AssetSources,
   type DictionaryModel,
   loadDictionary,
-  lookupForward,
   lookupForwardWithCompoundFallback,
   lookupReverse,
   searchBurmese,
@@ -110,13 +109,19 @@ export function load(
  *
  *    - empty / whitespace-only → `empty`
  *    - over the length cap     → `too_long`
- *    - Burmese / mixed         → segment + eager exact forward-lookup
- *                                per token → `breakdown`
- *    - Latin                   → `reverse` (top-N via `lookupReverse`)
+ *    - Burmese / mixed         → segment + eager exact forward-lookup;
+ *                                ≥ 2 tokens → `breakdown`, single
+ *                                token → `reverse` (via `searchBurmese`)
+ *    - Latin                   → segment; ≥ 2 segments → `breakdown`,
+ *                                single segment → `reverse` (via
+ *                                `lookupReverse`)
  *    - other (digits, etc.)    → `unrecognized`
  *
- *  Burmese single-word input deliberately stays a `breakdown` of length
- *  one — single-word search-box semantics live in `singleWordSearch`. */
+ *  The single-block → `reverse` collapse is symmetric across scripts:
+ *  whenever segmentation produces one block (a natural single word, a
+ *  known multi-word phrase like "new year", an article-absorbed "a fish",
+ *  a "to <verb>" infinitive) the view switches to the ranked single-word
+ *  list. */
 export function search(engine: SearchEngine, input: string): SearchResult {
   // Length cap is enforced on the raw input, before trim. The intent is
   // to refuse over-long inputs outright; an over-long input that *would*
@@ -191,21 +196,37 @@ export function singleWordSearch(
 }
 
 /** Burmese (or mixed) path: segment the full input via the word
- *  segmenter, then eagerly look up each token. Per-token *fuzzy*
- *  fallback (BK-tree near-matches) is still forbidden by the task spec
- *  — it would generate noisy previews for particles, punctuation, and
- *  non-Burmese runs. The **compound** fallback (`…WithCompoundFallback`)
- *  is allowed and useful: it only kicks in for a strict exact-miss and
- *  only matches a contiguous syllable sub-sequence of the token, so a
- *  segmenter-emitted compound like ``ညီမလေး`` resolves to its head
- *  ``ညီမ`` rather than an empty preview card. No spurious BK-tree
- *  near-misses are introduced. */
+ *  segmenter, then dispatch by `segmented.length`.
+ *
+ *    - **1 segment** — a single Burmese block (a one-word input, or a
+ *      sentence the segmenter collapsed to a single token). Route the
+ *      *original* input through `searchBurmese` so the user sees the
+ *      ranked single-word view (exact headword + syllable fuzzy),
+ *      matching the Latin single-segment behavior.
+ *
+ *    - **≥ 2 segments** — sentence breakdown. Eagerly look up each
+ *      token. Per-token *fuzzy* fallback (BK-tree near-matches) is
+ *      still forbidden by the task spec — it would generate noisy
+ *      previews for particles, punctuation, and non-Burmese runs. The
+ *      **compound** fallback (`…WithCompoundFallback`) is allowed and
+ *      useful: it only kicks in for a strict exact-miss and only
+ *      matches a contiguous syllable sub-sequence of the token, so a
+ *      segmenter-emitted compound like ``ညီမလေး`` resolves to its head
+ *      ``ညီမ`` rather than an empty preview card. No spurious BK-tree
+ *      near-misses are introduced. */
 function burmesePath(
   engine: SearchEngine,
   input: string,
   mixedInput: boolean,
 ): SearchResult {
   const segmented = segmentWords(engine.segmenter, input);
+  if (segmented.length <= 1) {
+    return {
+      kind: "reverse",
+      script: "burmese",
+      rows: searchBurmese(engine.dictionary, input),
+    };
+  }
   const tokens: BreakdownToken[] = segmented.map((token) => ({
     token,
     result: lookupForwardWithCompoundFallback(engine.dictionary, token),
@@ -220,7 +241,8 @@ function burmesePath(
 
 /** Latin path. View selection follows the *result shape*, not the
  *  surface shape of the input: every English input is run through the
- *  segmenter, then dispatched by `segments.length`.
+ *  segmenter, then dispatched by `segments.length` — symmetric with the
+ *  Burmese path above.
  *
  *    - **1 segment** — a single logical query, whether the input was
  *      one word ("water"), a known multi-word phrase ("thank you"),
@@ -269,6 +291,7 @@ function latinPath(engine: SearchEngine, input: string): SearchResult {
         : input;
     return {
       kind: "reverse",
+      script: "latin",
       rows: lookupReverse(engine.dictionary, query),
     };
   }

@@ -82,6 +82,7 @@ export function SearchContent({
   // reverse
   return (
     <ResultsView
+      script={result.script}
       rows={result.rows}
       selectedEntryId={selectedEntryId}
       onSelectRow={onSelectRow}
@@ -274,14 +275,18 @@ function BreakdownView({
 /* ─────────────────────── Results ──────────────────────── */
 
 function ResultsView({
+  script,
   rows,
   selectedEntryId,
   onSelectRow,
 }: {
+  script: "burmese" | "latin";
   rows: readonly ResultRowType[];
   selectedEntryId: number | null;
   onSelectRow?: (entry: Entry, row: ResultRowType) => void;
 }) {
+  const directionLabel =
+    script === "latin" ? "English → မြန်မာ" : "မြန်မာ → English";
   if (rows.length === 0) {
     return (
       <div
@@ -303,8 +308,8 @@ function ResultsView({
     >
       <div className="px-4 pt-2 flex justify-between items-center">
         <Eyebrow>
-          {rows.length === 1 ? "1 result" : `${rows.length} results`} ·
-          English → မြန်မာ
+          {rows.length === 1 ? "1 result" : `${rows.length} results`} ·{" "}
+          {directionLabel}
         </Eyebrow>
       </div>
       <div className="mt-3">
