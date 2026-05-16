@@ -138,6 +138,32 @@ export class DictionaryDB {
     return out;
   }
 
+  /** Substring scan over the `normalized_glosses` column. Used by the
+   *  "contains" fallback in reverse lookup to surface entries whose
+   *  primary gloss text *contains* the query word — the case where the
+   *  query is a stopword (excluded from `postings` at build time) or
+   *  one word inside a long natural-language gloss like
+   *  ``I, me (formal polite, used by males in Lower Myanmar)``.
+   *
+   *  The SQL pre-filter is a single `LIKE '%' || ? || '%'` over the
+   *  JSON-encoded `normalized_glosses` column — there is no FTS index,
+   *  so a `LIMIT` cap is what keeps this from full-scanning the entire
+   *  table on every short query. Callers apply a word-boundary check
+   *  in JS to discard substring-only matches (``me`` inside ``name``,
+   *  ``some``, ``mean``, …). */
+  entriesContainingGlossSubstring(needle: string, limit: number): Entry[] {
+    if (!needle) return [];
+    // Escape LIKE wildcards in the user-supplied needle so a query that
+    // legitimately contains ``_`` or ``%`` doesn't match every gloss.
+    const escaped = needle.replace(/([\\%_])/g, "\\$1");
+    return this.all(
+      `SELECT ${SELECT_ENTRY_COLS} FROM entries
+        WHERE normalized_glosses LIKE ? ESCAPE '\\'
+        LIMIT ?`,
+      [`%${escaped}%`, limit],
+    ).map(rowToEntry);
+  }
+
   /** Entry IDs that share a normalized gloss. Used to surface merged
    *  peers on forward lookup and to resolve fuzzy near-matches back to
    *  entries for reverse lookup. */

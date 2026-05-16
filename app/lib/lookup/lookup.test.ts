@@ -38,6 +38,17 @@ const FIXTURE: FixtureEntry[] = [
   { entryId: 9, headword: "ဋ", pos: "noun", glosses: ["hous"] },
   // Pure stopword gloss — exercises the "stopword query" behavior.
   { entryId: 10, headword: "ဌ", pos: "preposition", glosses: ["a"] },
+  // Multi-word gloss with a stopword buried inside — exercises the
+  // contains-fallback that surfaces entries whose primary gloss
+  // *contains* the query word but does not equal it (the production
+  // case "ကျွန်တော် -> I, me (formal polite, used by males in Lower
+  // Myanmar)" where querying "me" hits no postings and no gloss_groups).
+  {
+    entryId: 11,
+    headword: "ကျွန်တော်",
+    pos: "pron",
+    glosses: ["the man speaks"],
+  },
 ];
 
 let model: DictionaryModel;
@@ -250,6 +261,21 @@ describe("lookupReverse — tiered ranking", () => {
     const exact = rows.find((r) => r.key === "go up" && !r.fuzzy);
     expect(exact?.tier).toBe(Tier.EXACT);
     expect(exact!.entries.map((e) => e.entryId)).toEqual([2]);
+  });
+
+  test("contains-fallback surfaces entries whose primary gloss contains the query word", () => {
+    // "the" is a stopword in the fixture — excluded from postings.
+    // No entry has the bare normalized gloss "the", so gloss_groups
+    // misses too. The contains-fallback should LIKE-scan, word-filter,
+    // and surface entry 11 (gloss "the man speaks", which tokenizes to
+    // ["the", "man", "speaks"]).
+    const rows = lookupReverse(model, "the");
+    const containsRow = rows.find((r) =>
+      r.entries.some((e) => e.entryId === 11),
+    );
+    expect(containsRow).toBeDefined();
+    expect(containsRow!.fuzzy).toBe(false);
+    expect(containsRow!.key).toBe("the man speaks");
   });
 
   test("stopword query falls back to gloss_groups", () => {

@@ -30,6 +30,17 @@
 // stopword, a buried-position meaning, or a short word that fuzzy is
 // gated off for — wider passes progressively drop those gates so a valid
 // query never silently produces zero results.
+//
+// Sparse-result enrichment (contains pass): a single-word query that
+// appears inside a multi-word natural-language gloss (``me`` inside
+// ``I, me (formal polite, used by males in Lower Myanmar)``) is invisible
+// to both `postings` (the word is a stopword, so it was filtered out at
+// build time) and `gloss_groups` (the key there is the *whole* long
+// string, not ``me``). When the relaxed passes still leave the result
+// list under `SPARSE_RESULT_THRESHOLD`, the contains pass runs a SQL
+// `LIKE` pre-filter + JS word-boundary check to surface those entries.
+// It is only an enrichment — common queries that produce a full result
+// list never run it, so the noisy substring scan stays off the hot path.
 
 import type { DictionaryModel } from "./loader";
 import { normalizeGloss } from "./normalize";
@@ -86,14 +97,34 @@ interface ReversePassOptions {
   includeSingleTokenGlossGroups: boolean;
 }
 
+/** When the relaxed-pass ladder produces fewer than this many rows the
+ *  contains-pass runs to enrich the list. Three is "1 or 2 visible
+ *  results" — a hit rate so sparse it almost always means the postings
+ *  + gloss_groups paths missed the query. */
+const SPARSE_RESULT_THRESHOLD = 3;
+
+/** Candidate cap for the contains-pass SQL pre-filter. Without an FTS
+ *  index a `LIKE '%x%'` is a full scan; the cap bounds latency in the
+ *  worst case (very short query, very common substring). The JS
+ *  word-boundary check downstream trims the candidate set to true
+ *  matches, so the cap is the *raw* upper bound, not the result count. */
+const CONTAINS_CANDIDATE_LIMIT = 2000;
+
+/** Tokenization for the word-boundary check on contains-pass candidates.
+ *  Same shape as the build-pipeline regex (`tokenize_gloss_words`); a
+ *  drift between the two would make the contains pass either miss real
+ *  matches or admit spurious ones. */
+const GLOSS_WORD_RE = /[a-z0-9](?:[a-z0-9']*[a-z0-9])?/g;
+
 /** One reverse-lookup pass at a given knob configuration. Pure function
  *  of `(model, queryToken, opts)`; the driver below composes multiple
- *  passes for empty-fallback behavior. */
+ *  passes for empty-fallback behavior. Returns the bucket map directly
+ *  so the driver can merge passes' contributions before rank/resolve. */
 function lookupReverseOnce(
   model: DictionaryModel,
   queryToken: string,
   opts: ReversePassOptions,
-): ResultRow[] {
+): Map<string, Bucket> {
   const buckets = new Map<string, Bucket>();
   const isMultiToken = /\s/.test(queryToken);
 
@@ -158,7 +189,80 @@ function lookupReverseOnce(
     }
   }
 
-  return rankAndResolve(model, buckets, model.config.resultLimit);
+  return buckets;
+}
+
+/** Contains-pass: SQL `LIKE` pre-filter over `normalized_glosses`,
+ *  followed by a JS word-boundary check on each candidate's gloss
+ *  tokens. Produces `INCIDENTAL`-tier (non-fuzzy) buckets — the row
+ *  becomes a "partial" tag in the UI, sitting between real-tier and
+ *  fuzzy results in the sort order.
+ *
+ *  Single-token only: a multi-token query already runs the
+ *  `gloss_groups` exact-phrase path, and a word-boundary check across
+ *  multiple tokens is a different (subsequence) problem this pass does
+ *  not solve. */
+function lookupContainsBuckets(
+  model: DictionaryModel,
+  queryToken: string,
+  candidateLimit: number,
+): Map<string, Bucket> {
+  const buckets = new Map<string, Bucket>();
+  if (/\s/.test(queryToken)) return buckets;
+
+  const candidates = model.db.entriesContainingGlossSubstring(
+    queryToken,
+    candidateLimit,
+  );
+  if (candidates.length === 0) return buckets;
+
+  // The contains pass keeps the `maxGlossPosition` relevance gate: an
+  // entry only contributes when the matched gloss is among its top-K
+  // meanings. Without the gate a query like "me" would surface every
+  // entry that has "me" as a tertiary or worse meaning — exactly the
+  // noise the gate was introduced to prevent in `postings`.
+  const maxPos = model.config.maxGlossPosition;
+
+  for (const entry of candidates) {
+    const limit = Math.min(entry.normalizedGlosses.length, maxPos);
+    for (let gi = 0; gi < limit; gi++) {
+      const norm = entry.normalizedGlosses[gi];
+      if (!norm) continue;
+      const words = norm.match(GLOSS_WORD_RE);
+      if (!words || !words.includes(queryToken)) continue;
+      const b = ensureBucket(buckets, norm);
+      if (Tier.INCIDENTAL < b.tier) b.tier = Tier.INCIDENTAL;
+      b.fuzzy = false;
+      b.distance = 0;
+      addEntry(b, entry.entryId);
+      // Each entry contributes once even if multiple of its glosses
+      // qualify — the first qualifying gloss is the one the row keys on.
+      break;
+    }
+  }
+  return buckets;
+}
+
+/** Merge `source` buckets into `target`. Same-key buckets coalesce —
+ *  stronger tier wins, real beats fuzzy, fuzzy distance shrinks to the
+ *  smallest contributor, entry lists union (deduped). Used by the
+ *  contains-pass enrichment so its rows can dedupe against rows the
+ *  prior passes already produced. */
+function mergeBuckets(
+  target: Map<string, Bucket>,
+  source: Map<string, Bucket>,
+): void {
+  for (const [key, src] of source) {
+    const tgt = ensureBucket(target, key);
+    if (src.tier < tgt.tier) tgt.tier = src.tier;
+    if (!src.fuzzy) {
+      tgt.fuzzy = false;
+      tgt.distance = 0;
+    } else if (tgt.fuzzy && src.distance < tgt.distance) {
+      tgt.distance = src.distance;
+    }
+    for (const id of src.entryIds) addEntry(tgt, id);
+  }
 }
 
 /** Reverse-lookup: produce up to `config.resultLimit` ranked result rows
@@ -171,7 +275,10 @@ function lookupReverseOnce(
  *  match lives past the `maxGlossPosition` cap would otherwise vanish.
  *  Each pass relaxes exactly one gate so the *first* widening that
  *  yields anything wins — short of the user typing a typo we still
- *  prefer narrow, high-relevance results. */
+ *  prefer narrow, high-relevance results.
+ *
+ *  When the pass ladder leaves fewer than `SPARSE_RESULT_THRESHOLD`
+ *  rows, the contains-pass enriches the list. */
 export function lookupReverse(
   model: DictionaryModel,
   query: string,
@@ -210,11 +317,27 @@ export function lookupReverse(
     },
   ];
 
+  let buckets: Map<string, Bucket> = new Map();
   for (const opts of passes) {
-    const rows = lookupReverseOnce(model, queryToken, opts);
-    if (rows.length > 0) return rows;
+    buckets = lookupReverseOnce(model, queryToken, opts);
+    if (buckets.size > 0) break;
   }
-  return [];
+
+  // Sparse-result enrichment. Runs whenever the prior passes produced
+  // fewer than `SPARSE_RESULT_THRESHOLD` distinct buckets — including
+  // the all-empty case, which is the common landing spot for stopword
+  // queries that map to long multi-word glosses ("me" → ``I, me
+  // (formal polite, …)``).
+  if (buckets.size < SPARSE_RESULT_THRESHOLD) {
+    const contains = lookupContainsBuckets(
+      model,
+      queryToken,
+      CONTAINS_CANDIDATE_LIMIT,
+    );
+    mergeBuckets(buckets, contains);
+  }
+
+  return rankAndResolve(model, buckets, model.config.resultLimit);
 }
 
 /** Shared post-processing: turn the bucket map into ranked, resolved
