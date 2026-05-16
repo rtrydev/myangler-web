@@ -112,7 +112,7 @@ export function EntryDetail({
                       type="button"
                       onClick={() => onSelectRelated?.(r)}
                       disabled={!onSelectRelated}
-                      className={`w-full flex justify-between items-baseline py-2 gap-3 ${i === 0 ? "" : "border-t border-border"} ${onSelectRelated ? "cursor-pointer hover:bg-surface" : "cursor-default"}`}
+                      className={`w-full flex justify-between items-baseline px-2.5 py-2 gap-3 ${i === 0 ? "" : "border-t border-border"} ${onSelectRelated ? "cursor-pointer hover:bg-surface" : "cursor-default"}`}
                     >
                       <span className="mm text-base text-ink">{r.headword}</span>
                       <span className="serif italic text-[13px] text-ink-3">
