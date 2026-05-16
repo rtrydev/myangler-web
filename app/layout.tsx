@@ -50,6 +50,19 @@ export const viewport: Viewport = {
   ],
 };
 
+// Pre-hydration theme script. Inlined into `<head>` so it executes
+// synchronously while the HTML is parsed — *before* any paint — and
+// applies the user's persisted `data-accent` + `.dark` from
+// `myangler.preferences.v1` directly on `<html>`. Without this, the
+// page would flash the light/ruby default on every reload until React
+// hydrated and the in-app store re-applied the saved theme.
+//
+// The schema (key name, accent whitelist, `dark` boolean field) is
+// duplicated from `app/lib/app/preferences.ts` because this string is
+// evaluated outside the React module graph. Keep them in lockstep if
+// either side ever changes.
+const THEME_INIT_SCRIPT = `(function(){try{var raw=window.localStorage.getItem("myangler.preferences.v1");var accent="ruby";var dark=false;if(raw){var prefs=JSON.parse(raw);if(prefs&&typeof prefs==="object"){if(prefs.accent==="ruby"||prefs.accent==="gold"||prefs.accent==="jade"||prefs.accent==="indigo"){accent=prefs.accent;}if(typeof prefs.dark==="boolean"){dark=prefs.dark;}}}var root=document.documentElement;root.dataset.accent=accent;if(dark){root.classList.add("dark");}}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -58,8 +71,19 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // The inline theme script below mutates `class` and `data-accent`
+      // on this element before hydration runs. `suppressHydrationWarning`
+      // tells React to skip the mismatch check for THIS element only —
+      // children still hydrate normally.
+      suppressHydrationWarning
       className={`${spectral.variable} ${notoMm.variable} ${dmSans.variable} ${jetbrains.variable} h-full antialiased`}
     >
+      <head>
+        <script
+          id="myangler-theme-init"
+          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

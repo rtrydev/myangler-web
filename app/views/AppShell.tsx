@@ -13,7 +13,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Logo, Wordmark } from "@/app/components/Logo";
 import { SearchInput } from "@/app/components/SearchInput";
 import { TabBar, type TabItem } from "@/app/components/TabBar";
-import { type Accent } from "@/app/components/ThemeToggle";
 import { Button } from "@/app/components/Button";
 import { EntryDetail } from "@/app/components/EntryDetail";
 import { Sheet } from "@/app/components/Sheet";
@@ -38,6 +37,7 @@ import { lookupForward } from "@/app/lib/lookup";
 import type { Entry } from "@/app/lib/lookup";
 import { useEngineState } from "@/app/lib/app/engine-context";
 import { useFavorites, useHistory } from "@/app/lib/app/storage";
+import { usePreferences } from "@/app/lib/app/preferences";
 import {
   entryToFavorite,
   type FavoriteItem,
@@ -78,12 +78,16 @@ function AppShellReady({
   engine: SearchEngine;
   initialTab: Tab;
 }) {
-  const [accent, setAccent] = useState<Accent>("ruby");
+  // Theme + accent live in localStorage (key: `myangler.preferences.v1`)
+  // and are pre-applied to `<html>` by the inline script in
+  // `app/layout.tsx` before hydration. `usePreferences` is the React
+  // mirror; its setters persist + update the DOM in one call, so we no
+  // longer need the old `useEffect` mirrors for `accent` / `dark`.
+  const { accent, setAccent, dark, setDark } = usePreferences();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Entry | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [dark, setDark] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const history = useHistory();
@@ -122,20 +126,6 @@ function AppShellReady({
     const id = window.setTimeout(() => setToast(null), 2000);
     return () => window.clearTimeout(id);
   }, [toast]);
-
-  useEffect(() => {
-    // `--ruby` is remapped per accent via [data-accent] rules in
-    // globals.css, and `.dark[data-accent="indigo"]` requires BOTH on
-    // the same element — so they have to share `<html>` (.dark is
-    // applied there by the theme effect below).
-    document.documentElement.dataset.accent = accent;
-  }, [accent]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (dark) root.classList.add("dark");
-    else root.classList.remove("dark");
-  }, [dark]);
 
   const result = useMemo(() => runSearch(engine, query), [engine, query]);
 

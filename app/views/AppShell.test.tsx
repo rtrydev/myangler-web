@@ -194,6 +194,47 @@ describe("AppShell · accent application", () => {
   });
 });
 
+describe("AppShell · preferences persistence (the reload story)", () => {
+  test("theme + accent chosen in one session are restored on the next mount", async () => {
+    const user = userEvent.setup();
+
+    // First mount — user opens settings, flips dark mode, picks an accent.
+    // Note: `renderWithEngine` calls `clearAllStorage()` internally, so we
+    // use it once for the first mount and then drive the second mount
+    // through plain `render` to keep the persisted prefs intact.
+    const first = await renderWithEngine(<AppShell />);
+    const engine = first.engine;
+    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    await user.click(screen.getByRole("button", { name: /toggle theme/i }));
+    await user.click(screen.getByRole("button", { name: /accent jade/i }));
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(document.documentElement.dataset.accent).toBe("jade");
+
+    // Unmount, leaving localStorage intact — simulates a reload without
+    // resetting `<html>` (the pre-hydration script in `layout.tsx` would
+    // restore the DOM in real Next.js).
+    first.unmount();
+
+    // Second mount in the same jsdom — the new AppShell must surface the
+    // persisted prefs in its React state (so the settings UI shows the
+    // correct selected accent and dark-mode toggle).
+    render(
+      <EngineProvider engine={engine}>
+        <AppShell />
+      </EngineProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    expect(
+      screen.getByRole("button", { name: /accent jade/i }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: /toggle theme/i }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(document.documentElement.dataset.accent).toBe("jade");
+  });
+});
+
 // Loading and error states are covered exhaustively by
 // `engine-context.test.tsx` — exercising them here would force the
 // EngineProvider to start a real `load()` against URLs the test

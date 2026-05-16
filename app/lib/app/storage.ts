@@ -9,6 +9,7 @@
 // the native `storage` event).
 
 import { useCallback, useSyncExternalStore } from "react";
+import { clearStoredPreferences } from "./preferences";
 import type { FavoriteItem, HistoryItem } from "./types";
 
 const HISTORY_KEY = "myangler.history.v1";
@@ -171,9 +172,11 @@ export function useFavorites(): FavoritesStore {
 }
 
 /** Test-only helper to wipe both keys and the snapshot cache between
- *  tests, so the next render starts from a clean slate. */
+ *  tests, so the next render starts from a clean slate. Also clears
+ *  the preferences store (theme/accent) for the same reason. */
 export function clearAllStorage(): void {
   snapshotCache.clear();
+  clearStoredPreferences();
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(HISTORY_KEY);
   window.localStorage.removeItem(FAVORITES_KEY);
