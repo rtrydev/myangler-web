@@ -5,7 +5,11 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { segmentSyllables } from "@/app/lib/segmenter";
 import { buildFixtureModel, type FixtureEntry } from "./__fixtures__/buildFixture";
-import { lookupForward, lookupForwardWithFuzzy } from "./forward";
+import {
+  lookupForward,
+  lookupForwardWithCompoundFallback,
+  lookupForwardWithFuzzy,
+} from "./forward";
 import { lookupReverse } from "./reverse";
 import { searchBurmese } from "./burmeseSearch";
 import type { DictionaryModel } from "./loader";
@@ -66,6 +70,49 @@ describe("lookupForward", () => {
   test("does not surface peers for an entry with no merging", () => {
     const r = lookupForward(model, "မြန်မာ");
     expect(r!.mergedPeers).toEqual([]);
+  });
+});
+
+describe("lookupForwardWithCompoundFallback", () => {
+  test("returns the same result as lookupForward on an exact hit", () => {
+    const direct = lookupForward(model, "က");
+    const fallback = lookupForwardWithCompoundFallback(model, "က");
+    expect(fallback?.entry.entryId).toBe(direct?.entry.entryId);
+  });
+
+  test("falls back to a sub-sequence headword on a miss", () => {
+    // The fixture has မြန်မာ as a headword. ထိုင်းမြန်မာ syllables
+    // are [ထိုင်း, မြန်, မာ]; the contiguous 2-syl sub-sequence
+    // starting at position 1 is [မြန်, မာ] = မြန်မာ, which is in the
+    // fixture. The fallback should surface that match.
+    const compoundToken = "ထိုင်းမြန်မာ";
+    expect(lookupForward(model, compoundToken)).toBeNull();
+    const fallback = lookupForwardWithCompoundFallback(model, compoundToken);
+    expect(fallback).not.toBeNull();
+    expect(fallback!.entry.headword).toBe("မြန်မာ");
+  });
+
+  test("returns null when no sub-sequence resolves", () => {
+    // A token whose syllables never appear in the fixture at all.
+    expect(
+      lookupForwardWithCompoundFallback(model, "ဆော"),
+    ).toBeNull();
+  });
+
+  test("respects the minimum sub-sequence length (no spurious 1-syl matches on long tokens)", () => {
+    // A 4-syl token where only a single 1-syl piece appears in the
+    // fixture would NOT be matched (floor = ceil(4/2) = 2). This guards
+    // against the စ → matched-as-a-single-syllable failure mode.
+    // Build a synthetic 4-syl token using fixture syllables.
+    const probe = segmentSyllables("ဆော") // 1 syllable
+      .concat(segmentSyllables("ဆော")) // 2
+      .concat(segmentSyllables("ဆော")) // 3
+      .concat(segmentSyllables("က")); // 4, "က" is a fixture headword
+    const compound = probe.join("");
+    // ``က`` would match at length 1 if floor were 1, but floor is 2.
+    expect(
+      lookupForwardWithCompoundFallback(model, compound),
+    ).toBeNull();
   });
 });
 
@@ -130,8 +177,12 @@ describe("lookupReverse — tiered ranking", () => {
     expect(fuzzy!.distance).toBe(1);
   });
 
-  test("fuzzy results never preempt real-tier rows", () => {
-    const rows = lookupReverse(model, "go");
+  test("fuzzy results never preempt real-tier rows", async () => {
+    // Lower the fuzzy length floor so a 2-char query actually triggers
+    // fuzzy — the test is about ordering between real and fuzzy tiers,
+    // not the gating policy.
+    const m = await buildFixtureModel(FIXTURE, { minQueryLengthForFuzzyEn: 0 });
+    const rows = lookupReverse(m, "go");
     const realFirstFuzzyLast = (() => {
       let sawFuzzy = false;
       for (const r of rows) {
@@ -144,14 +195,18 @@ describe("lookupReverse — tiered ranking", () => {
   });
 
   test("fuzzy is absent when real-tier rows fill the result cap", async () => {
-    const tinyModel = await buildFixtureModel(FIXTURE, { resultLimit: 2 });
+    const tinyModel = await buildFixtureModel(FIXTURE, {
+      resultLimit: 2,
+      minQueryLengthForFuzzyEn: 0,
+    });
     const rows = lookupReverse(tinyModel, "go");
     expect(rows.length).toBe(2);
     expect(rows.every((r) => !r.fuzzy)).toBe(true);
   });
 
-  test("fuzzy fills slots remaining after real-tier rows", () => {
-    const rows = lookupReverse(model, "go");
+  test("fuzzy fills slots remaining after real-tier rows", async () => {
+    const m = await buildFixtureModel(FIXTURE, { minQueryLengthForFuzzyEn: 0 });
+    const rows = lookupReverse(m, "go");
     // We expect at least one FUZZY row when room remains; e.g. "got" (1
     // edit from "go") is the gloss of entry 4 and should show up.
     const fuzzyRows = rows.filter((r) => r.fuzzy);
@@ -159,6 +214,15 @@ describe("lookupReverse — tiered ranking", () => {
     const fuzzyKeys = fuzzyRows.map((r) => r.key);
     // "got" is the normalized gloss of entry 4 and is 1 edit from "go".
     expect(fuzzyKeys).toContain("got");
+  });
+
+  test("English fuzzy is gated by query length (no fuzzy for very short queries)", () => {
+    // The default fuzzy length floor is 5. A 2-char query "go" finds
+    // exact-tier matches via postings, but fuzzy near-matches ("got")
+    // are intentionally suppressed because distance-1 on 2-char queries
+    // matches unrelated words, not typos.
+    const rows = lookupReverse(model, "go");
+    expect(rows.every((r) => !r.fuzzy)).toBe(true);
   });
 
   test("merged-row tier reflects the highest-priority contributor", async () => {

@@ -31,8 +31,16 @@ TOOL_ROOT: Path = REPO_ROOT / "tools" / "data-pipeline"
 
 # --- Inputs -----------------------------------------------------------------
 
-# Raw kaikki.org Burmese extract (spec §3.1). Already downloaded by the user.
-DEFAULT_INPUT_PATH: Path = REPO_ROOT / "data" / "dictionary-burmese.jsonl"
+# Primary dictionary input — the EngMyanDictionary HuggingFace dataset
+# (spec §3.1). Produced by ``tools/data-pipeline/scripts/download_engmyan.py``,
+# which strips the dataset's image columns and lands only the text columns
+# as JSONL at this path. Git-ignored.
+DEFAULT_INPUT_PATH: Path = REPO_ROOT / "data" / "engmyan" / "engmyan.jsonl"
+
+# Legacy kaikki Burmese extract. The ``strip`` subcommand still reads
+# it for back-compat / regression testing, but it is no longer in the
+# default ``all`` pipeline.
+LEGACY_KAIKKI_INPUT_PATH: Path = REPO_ROOT / "data" / "dictionary-burmese.jsonl"
 
 # Optional myG2P headword list for coverage extension (spec §3.2). Path is a
 # placeholder; the `merge-g2p` step remains a stub in this task.
@@ -113,6 +121,18 @@ VERSION_STAMP_FORMAT: str = "%Y%m%dT%H%M%SZ"
 # benchmarked (spec §8); placeholder is the working ceiling from §4.2.
 TARGET_PAYLOAD_MAX_MB: int = 50
 
+# --- Bundle safety net ------------------------------------------------------
+
+# Hard ceiling on ``dictionary.sqlite``. The EngMyanDictionary dataset
+# carries image columns (PNG renders + illustrative pictures) totaling
+# ~950 MB; the download script and the inversion step both refuse to
+# touch them, but if a future change reintroduces them the shipped DB
+# would explode well past this limit and the build fails loudly. Set
+# well above the text-only inverted size (~40 MB at the current dataset
+# rev) so legitimate coverage growth doesn't trip the guard, but far
+# below the "images leaked" range (hundreds of MB).
+MAX_DB_SIZE_BYTES: int = 80 * 1024 * 1024  # 80 MiB
+
 
 @dataclass(frozen=True)
 class PipelineConfig:
@@ -122,6 +142,12 @@ class PipelineConfig:
     output_dir: Path = DEFAULT_OUTPUT_DIR
     myg2p_path: Path = DEFAULT_MYG2P_PATH
     ngram_dir: Path = DEFAULT_NGRAM_DIR
+    # Optional secondary dictionary: when present, the legacy kaikki
+    # Burmese-keyed JSONL is layered onto the EngMyan-derived entries
+    # (kaikki takes precedence — see ``steps/merge.py``). Set to a
+    # non-existent path to disable the overlay (e.g., for tests that
+    # exercise the engmyan-only path in isolation).
+    kaikki_input_path: Path = LEGACY_KAIKKI_INPUT_PATH
     fuzzy_threshold_en: int = FUZZY_THRESHOLD_EN
     fuzzy_threshold_my: int = FUZZY_THRESHOLD_MY
     stopwords: frozenset[str] = field(default_factory=lambda: ENGLISH_STOPWORDS)

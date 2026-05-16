@@ -20,6 +20,7 @@ import {
   type DictionaryModel,
   loadDictionary,
   lookupForward,
+  lookupForwardWithCompoundFallback,
   lookupReverse,
   searchBurmese,
 } from "@/app/lib/lookup";
@@ -192,10 +193,15 @@ export function singleWordSearch(
 }
 
 /** Burmese (or mixed) path: segment the full input via the word
- *  segmenter, then eagerly look up each token with exact forward lookup
- *  ONLY — per-token fuzzy fallback is forbidden by the task spec
- *  (fuzzy at segmentation time would generate noisy previews for
- *  particles, punctuation, and non-Burmese runs). */
+ *  segmenter, then eagerly look up each token. Per-token *fuzzy*
+ *  fallback (BK-tree near-matches) is still forbidden by the task spec
+ *  — it would generate noisy previews for particles, punctuation, and
+ *  non-Burmese runs. The **compound** fallback (`…WithCompoundFallback`)
+ *  is allowed and useful: it only kicks in for a strict exact-miss and
+ *  only matches a contiguous syllable sub-sequence of the token, so a
+ *  segmenter-emitted compound like ``ညီမလေး`` resolves to its head
+ *  ``ညီမ`` rather than an empty preview card. No spurious BK-tree
+ *  near-misses are introduced. */
 function burmesePath(
   engine: SearchEngine,
   input: string,
@@ -204,7 +210,7 @@ function burmesePath(
   const segmented = segmentWords(engine.segmenter, input);
   const tokens: BreakdownToken[] = segmented.map((token) => ({
     token,
-    result: lookupForward(engine.dictionary, token),
+    result: lookupForwardWithCompoundFallback(engine.dictionary, token),
   }));
   return {
     kind: "breakdown",

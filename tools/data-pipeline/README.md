@@ -1,8 +1,9 @@
 # data-pipeline
 
-Build-time tool that turns the raw kaikki.org Burmese Wiktionary extract
-into the static assets shipped by the **myangler-web** PWA frontend
-(SQLite database, BK-trees, version stamp).
+Build-time tool that ingests the **EngMyanDictionary** HuggingFace
+dataset, **inverts** it into Burmese-keyed entries, and produces the
+static assets shipped by the **myangler-web** PWA frontend (SQLite
+database, BK-trees, version stamp).
 
 It is a separate, auxiliary tool — it runs at build time on a developer
 machine, reads from the repo's `data/` directory, and writes everything
@@ -10,28 +11,31 @@ into its own `build/` directory. The frontend app is not touched.
 
 The authoritative description of what this pipeline must produce lives
 in [`docs/burmese-dictionary-spec.md`](../../docs/burmese-dictionary-spec.md) —
-in particular **§3 (Data)** and **§6 (Build Pipeline)**.
+in particular **§3 (Data)** and **§6 (Build Pipeline)**. Spec §3.1
+documents the v1 source migration (from CC-BY-SA kaikki Wiktionary to
+GPL-2.0 EngMyanDictionary) and the direction-inversion design.
 
 ## Status
 
 | Step | Status | Notes |
 |---|---|---|
 | `load` | implemented | Streams & validates the JSONL extract |
-| `strip` | implemented | Extracts headword/POS/glosses/IPA; normalizes glosses (spec §2.4.1) |
+| `engmyan` | implemented | **Primary loader.** Ingests EngMyanDictionary rows and inverts them into Burmese-keyed `StrippedEntry` records (spec §3.1, §6.2) |
+| `strip` | implemented (back-compat) | Legacy kaikki loader. Not in the default `all` chain; kept for regression tests |
 | `index-en` | implemented | English inverted index w/ exact/head/incidental tier flags |
-| `merge-g2p` | **stub** | Out of scope for v1; v1 ships on Wiktionary data only |
+| `merge-g2p` | **stub** | Optional myG2P coverage extension (spec §3.2) |
 | `build-db` | implemented | SQLite DB w/ indexes, VACUUMed |
 | `convert-ngram` | implemented | Faithful conversion of myWord pickled n-grams to JSON; no pruning |
 | `bktree-en` | implemented | Char-level Levenshtein over gloss-words |
 | `bktree-my` | implemented | Syllable-level Levenshtein over headwords |
 | `version` | implemented | UTC build-timestamp stamp |
-| `report` | implemented | Prints entry counts and asset sizes (incl. n-gram payload) |
+| `report` | implemented | Prints entry counts and asset sizes; enforces the DB size guard (spec §3.1.1) |
 | `all` | implemented | Runs every implemented step in order |
 
-`merge-g2p` remains a logging-only stub and is skipped by `all` —
-v1 ships on Wiktionary data alone. The myWord **word segmenter port
-itself** lives on the frontend; this tool only produces the n-gram
-**data asset** the segmenter consumes (`ngram.json`).
+`merge-g2p` remains a logging-only stub and is skipped by `all`. The
+myWord **word segmenter port itself** lives on the frontend; this tool
+only produces the n-gram **data asset** the segmenter consumes
+(`ngram.json`).
 
 A **corrected, vendored** Python reference implementation of the myWord
 word segmenter also lives in this directory at
@@ -47,15 +51,21 @@ upstream and why.
 
 - Python **3.13** (pinned in `.python-version`; `>=3.11` works in practice
   and is what `pyproject.toml` declares).
-- The raw Burmese JSONL extract at `data/dictionary-burmese.jsonl`
-  (already committed to the repo).
+- The EngMyanDictionary text-only JSONL extract at
+  `data/engmyan/engmyan.jsonl`
+  (see [How to obtain the input](#how-to-obtain-the-engmyandictionary-input)
+  below). Git-ignored; download it once with the helper script.
 - The myWord **word-level** unigram + bigram pickles at `data/myword/`
   (see [`convert-ngram`](#convert-ngram-input-the-myword-pickles) below).
   These are large binary inputs, **not** committed; provide them yourself.
 
-No third-party runtime dependencies — the implementation uses only the
-Python standard library (including the bundled `sqlite3`). Dev tools
-(pytest, ruff) live in the `[dev]` extra.
+No third-party runtime dependencies for the pipeline itself — the core
+implementation uses only the Python standard library (including the
+bundled `sqlite3`). The one-shot downloader script
+(`scripts/download_engmyan.py`) has optional build-time deps
+(`huggingface_hub`, `pyarrow`) it imports lazily and reports a clean
+install instruction if they are missing. Dev tools (pytest, ruff) live
+in the `[dev]` extra.
 
 ## Setup
 
@@ -78,7 +88,8 @@ The install registers a `data-pipeline` console script and makes
 ```bash
 data-pipeline --help
 data-pipeline all          # build every shipped asset
-data-pipeline strip        # standalone: just summarize the strip stage
+data-pipeline engmyan      # standalone: ingest+invert EngMyanDictionary
+data-pipeline strip        # standalone: legacy kaikki loader (back-compat)
 data-pipeline index-en     # standalone: build & summarize the index
 data-pipeline build-db     # standalone: build the SQLite DB only
 data-pipeline bktree-en    # standalone: build the English BK-tree
@@ -90,8 +101,11 @@ data-pipeline report       # equivalent to `all` (rebuilds + prints summary)
 
 Global options:
 
-- `--input PATH`       Path to the raw JSONL (default:
-  `data/dictionary-burmese.jsonl`, resolved against the repo root).
+- `--input PATH`       Path to the EngMyanDictionary JSONL (default:
+  `data/engmyan/engmyan.jsonl`, resolved against the repo root). When the
+  back-compat `strip` subcommand is invoked with the default value, it
+  transparently falls back to the legacy kaikki path
+  `data/dictionary-burmese.jsonl`.
 - `--output-dir PATH`  Where built assets land (default:
   `tools/data-pipeline/build/`).
 - `--ngram-dir PATH`   Where the myWord pickles live (default:
@@ -196,6 +210,41 @@ To re-hydrate:
 Query thresholds live in `config.py`:
 `FUZZY_THRESHOLD_EN = 1`, `FUZZY_THRESHOLD_MY = 1` (spec §2.5). They are
 not baked into the tree.
+
+### How to obtain the EngMyanDictionary input
+
+The dictionary source is the
+`chuuhtetnaing/english-myanmar-dictionary-dataset-EngMyanDictionary`
+HuggingFace dataset. The full dataset is ~950 MB because it ships two
+PNG-blob columns (`image_definition`, `picture`) the app does not use;
+the helper script below downloads **only the text columns** the pipeline
+consumes (`word`, `stripword`, `title`, `definition`, `raw_definition`,
+`keywords`, `synonym`) and writes them as JSONL at the path the
+pipeline reads by default.
+
+```bash
+# One-time install of the downloader's optional dependencies.
+# (`download` is an extra defined in tools/data-pipeline/pyproject.toml.)
+pip install -e "tools/data-pipeline[download]"
+
+# Fetches the text-only columns into data/engmyan/engmyan.jsonl (git-ignored).
+python tools/data-pipeline/scripts/download_engmyan.py
+```
+
+The script projects parquet shards down to the text columns at read
+time so the image bytes never materialize on disk in your tree. The
+`data/engmyan/` directory is git-ignored. If the JSONL is missing when
+`engmyan` (or `all`) runs, the CLI exits 1 with an actionable
+instruction — no stack trace.
+
+**License caveat (important).** EngMyanDictionary is GPL-2.0 (inherited
+from the upstream Android app
+[`soeminnminn/EngMyanDictionary`](https://github.com/soeminnminn/EngMyanDictionary)).
+The shipped `dictionary.sqlite` is therefore a derived work under
+GPL-2.0. Redistributions must comply. The in-app Settings view surfaces
+the attribution (`EngMyanDictionary by Soe Minn Minn, via the
+chuuhtetnaing HuggingFace dataset, GPL-2.0`). The previous data source
+(kaikki / Wiktionary, CC-BY-SA) is no longer the default; see spec §3.1.
 
 ### `convert-ngram` input — the myWord pickles
 
@@ -335,10 +384,14 @@ distinguishable. Asset size: tens of bytes.
 
 `all` runs:
 
-1. `strip`     — strip entries to required fields; normalize glosses
+1. `engmyan`   — ingest EngMyanDictionary rows and **invert** them into
+   Burmese-keyed `StrippedEntry` records (spec §3.1, §6.2). Replaces the
+   legacy kaikki `strip` step as the dictionary-source loader.
 2. `index-en`  — build the English inverted index
-3. `merge-g2p` — *skipped* (stub; v1 ships on Wiktionary data only)
-4. `build-db`  — build, index, and VACUUM the SQLite database
+3. `merge-g2p` — *skipped* (stub)
+4. `build-db`  — build, index, and VACUUM the SQLite database (a hard
+   size ceiling fails the build if it exceeds `MAX_DB_SIZE_BYTES`, spec
+   §3.1.1 — the bundle safety net against image-column regressions)
 5. `convert-ngram` — convert myWord pickled n-grams into `ngram.json`
 6. `bktree-en` — build the English BK-tree
 7. `bktree-my` — build the Burmese BK-tree
@@ -348,6 +401,10 @@ distinguishable. Asset size: tens of bytes.
 
 Mirrors spec §6 steps 2–10. Each step lives in its own module under
 `src/data_pipeline/steps/`.
+
+The legacy `strip` step (kaikki Wiktionary loader) is preserved as a
+standalone subcommand for back-compat and regression testing; it is no
+longer wired into `all`.
 
 ## Project layout
 
@@ -366,7 +423,8 @@ tools/data-pipeline/
 │   ├── syllable.py        # sylbreak-style Burmese syllable segmenter
 │   └── steps/
 │       ├── __init__.py
-│       ├── strip.py       # field extraction + gloss normalization
+│       ├── engmyan.py     # EngMyanDictionary ingestion + Burmese-keyed inversion
+│       ├── strip.py       # legacy kaikki loader (back-compat)
 │       ├── index_en.py    # English inverted index + tier flags
 │       ├── build_db.py    # SQLite assembly + VACUUM
 │       ├── bktree_en.py   # English BK-tree build & serialize
@@ -374,8 +432,11 @@ tools/data-pipeline/
 │       ├── convert_ngram.py # myWord pickle → ngram.json
 │       ├── version.py     # version-stamp generation
 │       └── report.py      # final report formatter
+├── scripts/
+│   └── download_engmyan.py  # one-shot HF text-only downloader
 └── tests/
     ├── test_smoke.py
+    ├── test_engmyan.py
     ├── test_strip.py
     ├── test_index_en.py
     ├── test_syllable.py

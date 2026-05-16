@@ -11,7 +11,11 @@ export {
   type DictionaryModel,
 } from "./loader";
 
-export { lookupForward, lookupForwardWithFuzzy } from "./forward";
+export {
+  lookupForward,
+  lookupForwardWithCompoundFallback,
+  lookupForwardWithFuzzy,
+} from "./forward";
 export { lookupReverse } from "./reverse";
 export { searchBurmese } from "./burmeseSearch";
 

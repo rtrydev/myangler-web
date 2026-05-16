@@ -1,9 +1,17 @@
-"""End-to-end test for the `all` command over a tiny fixture."""
+"""End-to-end test for the `all` command over a tiny fixture.
+
+After the data-source migration (docs/burmese-dictionary-spec.md §3.1),
+``all`` runs ``engmyan`` instead of the legacy kaikki ``strip``. This
+test feeds an EngMyanDictionary-shaped fixture (English headword,
+HTML/raw-text definition with Burmese glosses) and asserts the pipeline
+still produces every expected asset with the same schemas/format tags.
+"""
 
 from __future__ import annotations
 
 import json
 import pickle
+import sqlite3
 import subprocess
 import sys
 from collections import defaultdict
@@ -20,33 +28,68 @@ from data_pipeline.config import (
 )
 
 
-def _write_fixture(path: Path) -> None:
-    entries = [
+def _write_engmyan_fixture(path: Path) -> None:
+    """Tiny EngMyanDictionary-shaped JSONL fixture.
+
+    The pipeline inverts these into Burmese-headword entries whose
+    glosses are the English ``word``s. Picked to exercise:
+      * a noun with a single Burmese gloss → "က"
+      * a verb with multiple senses (၁။/၂။) → "သွား"
+      * a proper noun with English-like parenthetical → "မြန်မာ"
+      * an abbreviation that should not produce a non-Burmese headword
+    """
+    rows = [
         {
-            "word": "က",
-            "pos": "noun",
-            "senses": [{"glosses": ["letter ka"]}],
-            "sounds": [{"ipa": "/ka/"}],
+            "word": "letter ka",
+            "stripword": "letter ka",
+            "title": "letter ka / 'letter/ kə / n",
+            "definition": "<i>n.</i> <b>က</b>",
+            "raw_definition": "က",
+            "keywords": "",
+            "synonym": "",
         },
         {
-            "word": "သွား",
-            "pos": "verb",
-            "senses": [{"glosses": ["to go"]}, {"glosses": ["to depart"]}],
+            "word": "go",
+            "stripword": "go",
+            "title": "go / gou / v",
+            "definition": "<i>v.</i> ၁။ <b>သွား</b>; example sentence (English).",
+            "raw_definition": "v. ၁။ သွား; example sentence (English).",
+            "keywords": "",
+            "synonym": "depart",
         },
         {
-            "word": "မြန်မာ",
-            "pos": "name",
-            "senses": [{"glosses": ["Myanmar (a country in Southeast Asia)"]}],
+            "word": "depart",
+            "stripword": "depart",
+            "title": "depart / dɪ'pɑːt / v",
+            "definition": "<i>v.</i> <b>သွား</b>; leave abruptly.",
+            "raw_definition": "v. သွား; leave abruptly.",
+            "keywords": "",
+            "synonym": "",
         },
         {
-            "word": "ထ",
-            "pos": "noun",
-            "senses": [],  # empty-gloss case
+            "word": "Myanmar",
+            "stripword": "myanmar",
+            "title": "Myanmar / mjɑːn'mɑː / n",
+            "definition": "<i>n.</i> <b>မြန်မာ</b>",
+            "raw_definition": "n. မြန်မာ",
+            "keywords": "",
+            "synonym": "",
+        },
+        # Abbreviation row: Myanmar side empty, must NOT emit an
+        # English-headword entry.
+        {
+            "word": "abbr",
+            "stripword": "abbr",
+            "title": "abbr / ǝ'briː / abbr",
+            "definition": "<i>abbr.</i> abbreviation",
+            "raw_definition": "abbr. abbreviation",
+            "keywords": "",
+            "synonym": "",
         },
     ]
     with path.open("w", encoding="utf-8") as fh:
-        for e in entries:
-            fh.write(json.dumps(e, ensure_ascii=False) + "\n")
+        for r in rows:
+            fh.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
 def _write_ngram_fixture(ngram_dir: Path) -> None:
@@ -63,8 +106,8 @@ def _write_ngram_fixture(ngram_dir: Path) -> None:
 
 
 def test_all_produces_every_expected_asset(tmp_path: Path) -> None:
-    fixture = tmp_path / "tiny.jsonl"
-    _write_fixture(fixture)
+    fixture = tmp_path / "engmyan.jsonl"
+    _write_engmyan_fixture(fixture)
     ngram_dir = tmp_path / "myword"
     _write_ngram_fixture(ngram_dir)
     out_dir = tmp_path / "build"
@@ -80,6 +123,10 @@ def test_all_produces_every_expected_asset(tmp_path: Path) -> None:
             str(out_dir),
             "--ngram-dir",
             str(ngram_dir),
+            # Disable the kaikki overlay so this test exercises the
+            # engmyan-only path in isolation from real ``data/`` files.
+            "--kaikki-input",
+            str(tmp_path / "no-kaikki-here.jsonl"),
             "all",
         ],
         capture_output=True,
@@ -123,3 +170,23 @@ def test_all_produces_every_expected_asset(tmp_path: Path) -> None:
     assert ngram_payload["format"] == "myword-ngram/v1"
     assert ngram_payload["unigram"] == {"က": 5, "သွား": 7, "မြန်မာ": 2}
     assert ngram_payload["bigram"]["သွား"]["မြန်မာ"] == 4
+
+    # The shipped SQLite must be Burmese-keyed: every headword in the
+    # `entries` table is a Burmese run, never an English string. This is
+    # the migration's headline invariant.
+    conn = sqlite3.connect(out_dir / DB_FILENAME)
+    try:
+        headwords = [
+            row[0] for row in conn.execute("SELECT headword FROM entries")
+        ]
+    finally:
+        conn.close()
+    assert headwords, "entries table is empty"
+    # Every headword contains at least one Myanmar codepoint.
+    for hw in headwords:
+        assert any(0x1000 <= ord(ch) <= 0x109F for ch in hw), (
+            f"non-Burmese headword leaked into entries: {hw!r}"
+        )
+    # The "abbr" row must NOT have produced an English-keyed entry.
+    assert "abbr" not in headwords
+    assert "abbreviation" not in headwords

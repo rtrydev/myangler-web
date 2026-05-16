@@ -21,6 +21,14 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
+# Build-time only — needed by scripts/download_engmyan.py to fetch the
+# EngMyanDictionary HuggingFace dataset (text columns only). The core
+# pipeline (`data_pipeline all`) stays stdlib-only and does NOT import
+# these.
+download = [
+    "huggingface_hub>=0.24",
+    "pyarrow>=15.0",
+]
 
 [project.scripts]
 data-pipeline = "data_pipeline.cli:main"

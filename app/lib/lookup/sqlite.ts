@@ -154,26 +154,48 @@ export class DictionaryDB {
   /** Postings for a single gloss-word, ordered by tier ascending. The
    *  returned shape is the natural unit for the reverse-lookup pipeline
    *  — `(tier, entry_id, gloss_index)` plus the entry's normalized gloss
-   *  for merging. */
+   *  for merging.
+   *
+   *  `maxGlossPosition` (optional) caps the entry-side gloss position
+   *  the posting was emitted from: when set, only postings whose
+   *  `gloss_index` is strictly less than this value are returned. The
+   *  build pipeline ranks each entry's glosses by relevance (primary
+   *  translation first, then by frequency), so this is a "the matched
+   *  word is one of the entry's top-N meanings" relevance gate. Pass
+   *  `Number.POSITIVE_INFINITY` (or omit) to disable. */
   postingsForWord(
     word: string,
+    maxGlossPosition?: number,
   ): Array<{
     tier: TierValue;
     entryId: number;
     glossIndex: number;
     normalizedGloss: string;
   }> {
-    const rows = this.all(
-      `SELECT p.tier AS tier,
-              p.entry_id AS entry_id,
-              p.gloss_index AS gloss_index,
-              e.normalized_glosses AS normalized_glosses
-         FROM postings p
-         JOIN entries e ON e.entry_id = p.entry_id
-        WHERE p.word = ?
-        ORDER BY p.tier, p.entry_id, p.gloss_index`,
-      [word],
-    );
+    const hasPositionCap =
+      maxGlossPosition !== undefined &&
+      Number.isFinite(maxGlossPosition);
+    const sql = hasPositionCap
+      ? `SELECT p.tier AS tier,
+                p.entry_id AS entry_id,
+                p.gloss_index AS gloss_index,
+                e.normalized_glosses AS normalized_glosses
+           FROM postings p
+           JOIN entries e ON e.entry_id = p.entry_id
+          WHERE p.word = ? AND p.gloss_index < ?
+          ORDER BY p.tier, p.entry_id, p.gloss_index`
+      : `SELECT p.tier AS tier,
+                p.entry_id AS entry_id,
+                p.gloss_index AS gloss_index,
+                e.normalized_glosses AS normalized_glosses
+           FROM postings p
+           JOIN entries e ON e.entry_id = p.entry_id
+          WHERE p.word = ?
+          ORDER BY p.tier, p.entry_id, p.gloss_index`;
+    const params: unknown[] = hasPositionCap
+      ? [word, maxGlossPosition]
+      : [word];
+    const rows = this.all(sql, params);
     const out: Array<{
       tier: TierValue;
       entryId: number;

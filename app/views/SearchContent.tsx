@@ -288,9 +288,28 @@ function ResultsView({
         {rows.map(row => {
           const first = row.entries[0];
           if (!first) return null;
-          const group = row.entries.map(e => e.headword);
+          // Keep the visible Burmese group and gloss preview short. The
+          // lookup engine's `maxGlossPosition` gate already tightens the
+          // result set semantically; these caps are a final layout
+          // safety net so a row never wraps to many lines. The full
+          // entry is available on tap.
+          const allHeadwords = row.entries.map(e => e.headword);
+          const groupCap = 8;
+          const group = allHeadwords.slice(0, groupCap);
+          const extraGroup = allHeadwords.length - group.length;
           const en = first.glosses[0] ?? row.key;
-          const meaning = first.glosses.slice(1).join("; ") || undefined;
+          const meaningCap = 6;
+          const meanings = first.glosses.slice(1, 1 + meaningCap);
+          const extraMeanings = first.glosses.length - 1 - meanings.length;
+          const meaning =
+            meanings.length === 0
+              ? undefined
+              : extraMeanings > 0
+                ? `${meanings.join("; ")}; +${extraMeanings} more`
+                : meanings.join("; ");
+          const noteParts: string[] = [];
+          if (extraGroup > 0) noteParts.push(`+${extraGroup} more entries`);
+          if (row.fuzzy) noteParts.push(`near match · distance ${row.distance}`);
           const tag =
             row.fuzzy
               ? "fuzzy"
@@ -308,7 +327,7 @@ function ResultsView({
               en={en}
               meaning={meaning}
               tag={tag}
-              note={row.fuzzy ? `near match · distance ${row.distance}` : undefined}
+              note={noteParts.length > 0 ? noteParts.join(" · ") : undefined}
               role="button"
               tabIndex={0}
               aria-pressed={isSelected}

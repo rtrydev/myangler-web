@@ -7,7 +7,7 @@
 import { AccentSwitcher, ThemeToggle, type Accent } from "@/app/components/ThemeToggle";
 import { Button } from "@/app/components/Button";
 import { CloseIcon } from "@/app/components/Icon";
-import { RuleGold } from "@/app/components/Ornament";
+import { Eyebrow, RuleGold } from "@/app/components/Ornament";
 
 type SettingsViewProps = {
   accent: Accent;
@@ -69,8 +69,57 @@ export function SettingsView({
         >
           <AccentSwitcher value={accent} onChange={onAccentChange} />
         </SettingsRow>
+
+        <DataSources />
       </div>
     </div>
+  );
+}
+
+function DataSources() {
+  return (
+    <section
+      aria-labelledby="settings-data-sources"
+      className="flex flex-col gap-2"
+    >
+      <Eyebrow id="settings-data-sources" gold withRule>
+        Data sources
+      </Eyebrow>
+      <p className="serif text-[13px] text-ink-2 leading-relaxed">
+        Dictionary data: <strong className="text-ink">EngMyanDictionary</strong>{" "}
+        by Soe Minn Minn, via the{" "}
+        <a
+          href="https://huggingface.co/datasets/chuuhtetnaing/english-myanmar-dictionary-dataset-EngMyanDictionary"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gold underline decoration-gold/50 underline-offset-2 hover:decoration-gold"
+        >
+          chuuhtetnaing HuggingFace dataset
+        </a>
+        . Licensed under{" "}
+        <a
+          href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gold underline decoration-gold/50 underline-offset-2 hover:decoration-gold"
+        >
+          GPL-2.0
+        </a>
+        .
+      </p>
+      <p className="serif text-[13px] text-ink-2 leading-relaxed">
+        Word segmentation uses n-gram data from{" "}
+        <a
+          href="https://github.com/ye-kyaw-thu/myWord"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gold underline decoration-gold/50 underline-offset-2 hover:decoration-gold"
+        >
+          myWord
+        </a>{" "}
+        by Ye Kyaw Thu.
+      </p>
+    </section>
   );
 }
 

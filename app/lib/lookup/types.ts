@@ -88,12 +88,35 @@ export interface LookupConfig {
   /** Hard cap on reverse-lookup / Burmese-search result rows. Spec §2.4.4
    *  pegs this at 10; exposed for tests. */
   resultLimit: number;
+  /** Reverse-lookup relevance gate: an entry only contributes to a
+   *  result bucket if the matched gloss is among the entry's first
+   *  `maxGlossPosition` glosses. Glosses are ranked by the build
+   *  pipeline (primary translations first, then by English-corpus
+   *  frequency), so a smaller threshold = tighter, primary-meaning-only
+   *  results. Set to `Infinity` to disable the filter. */
+  maxGlossPosition: number;
+  /** Minimum query length (in characters) before English fuzzy runs.
+   *  Edit distance 1 on a short word (rain → pain/brain/drain) lands
+   *  on a *different* word, not a typo of the same word. Fuzzy is
+   *  meaningful once the query is long enough that one edit ≤ ~20% of
+   *  the word's length. Burmese fuzzy uses syllable units and is not
+   *  gated by this knob. */
+  minQueryLengthForFuzzyEn: number;
+  /** Hard cap on the "Forms" (mergedPeers) list returned by
+   *  `lookupForward`. The list is also gated by `maxGlossPosition` on
+   *  both sides; this cap is the final layout safety net so a polysemous
+   *  Burmese headword (သစ်တော: wood/forest/jungle) never produces a
+   *  multi-screen list of related words. Set to `Infinity` to disable. */
+  maxFormsPerEntry: number;
 }
 
 export const DEFAULT_CONFIG: LookupConfig = {
   fuzzyThresholdEn: 1,
   fuzzyThresholdMy: 1,
   resultLimit: 10,
+  maxGlossPosition: 3,
+  minQueryLengthForFuzzyEn: 5,
+  maxFormsPerEntry: 8,
 };
 
 /** Asset bundle the loader accepts. Either a URL pair (`browser` shape)

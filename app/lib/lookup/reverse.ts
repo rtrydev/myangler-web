@@ -79,9 +79,18 @@ export function lookupReverse(
   const queryToken = normalized;
 
   const buckets = new Map<string, Bucket>();
+  const maxPos = model.config.maxGlossPosition;
+  // The relevance gate is meaningful for single-word queries: the
+  // postings table is keyed by individual gloss-words, so the
+  // `gloss_index` filter implies "the matched word is among the
+  // entry's top-N meanings". For a multi-word query like "go up",
+  // postings carries no row (postings keys on single words); we fall
+  // back to the gloss_groups path below, which has no per-entry
+  // position information.
+  const isMultiToken = /\s/.test(queryToken);
 
   // ---- Real tiers (exact / head / incidental) -------------------------
-  for (const p of model.db.postingsForWord(queryToken)) {
+  for (const p of model.db.postingsForWord(queryToken, maxPos)) {
     const key = p.normalizedGloss;
     if (!key) continue;
     const b = ensureBucket(buckets, key);
@@ -92,43 +101,50 @@ export function lookupReverse(
     addEntry(b, p.entryId);
   }
 
-  // Multi-word exact-gloss safety net. The merging key is the query
-  // itself (which IS the normalized gloss for these rows), so the
-  // bucket de-dupes against any single-word EXACT row that already
-  // populated the same key.
-  const exactGlossEntries = model.db.entryIdsForNormalizedGloss(queryToken);
-  if (exactGlossEntries.length > 0) {
-    const b = ensureBucket(buckets, queryToken);
-    if (Tier.EXACT < b.tier) b.tier = Tier.EXACT;
-    b.fuzzy = false;
-    b.distance = 0;
-    for (const id of exactGlossEntries) addEntry(b, id);
+  // Multi-word exact-gloss safety net. Only fires for multi-word
+  // queries — for single-token queries every entry returned here is
+  // already in the postings result above (postings tier=EXACT covers
+  // the same set), and re-adding them would bypass the
+  // `maxGlossPosition` relevance gate.
+  if (isMultiToken) {
+    const exactGlossEntries = model.db.entryIdsForNormalizedGloss(queryToken);
+    if (exactGlossEntries.length > 0) {
+      const b = ensureBucket(buckets, queryToken);
+      if (Tier.EXACT < b.tier) b.tier = Tier.EXACT;
+      b.fuzzy = false;
+      b.distance = 0;
+      for (const id of exactGlossEntries) addEntry(b, id);
+    }
   }
 
   // ---- Fuzzy tier -----------------------------------------------------
-  // Always run fuzzy — the spec is explicit that fuzzy is included even
-  // when real-tier matches exist (§2.4.2). Sort discipline enforces "never
-  // preempts": fuzzy buckets share `tier === FUZZY` and sort after real
-  // rows.
-  const fuzzyMatches = model.bktreeEn.query(
-    queryToken,
-    model.config.fuzzyThresholdEn,
-  );
-  for (const fm of fuzzyMatches) {
-    // The probe itself comes back at distance 0 — that contributes
-    // nothing the real-tier pass didn't already capture.
-    if (fm.value === queryToken) continue;
-    for (const p of model.db.postingsForWord(fm.value)) {
-      const key = p.normalizedGloss;
-      if (!key) continue;
-      const b = ensureBucket(buckets, key);
-      // If a real-tier posting already populated this bucket, leave it
-      // alone — the bucket is a real row, not a fuzzy row. Otherwise
-      // remember the smallest BK-tree distance we saw.
-      if (b.fuzzy) {
-        if (fm.distance < b.distance) b.distance = fm.distance;
+  // Always run fuzzy when the query is long enough — the spec includes
+  // fuzzy alongside real-tier matches (§2.4.2), but distance-1 on a
+  // short query (rain → pain/brain/drain) lands on different words,
+  // not typos of the same word, so a length floor is applied. Sort
+  // discipline still enforces "never preempts": fuzzy buckets share
+  // `tier === FUZZY` and sort after real rows.
+  if (queryToken.length >= model.config.minQueryLengthForFuzzyEn) {
+    const fuzzyMatches = model.bktreeEn.query(
+      queryToken,
+      model.config.fuzzyThresholdEn,
+    );
+    for (const fm of fuzzyMatches) {
+      // The probe itself comes back at distance 0 — that contributes
+      // nothing the real-tier pass didn't already capture.
+      if (fm.value === queryToken) continue;
+      for (const p of model.db.postingsForWord(fm.value, maxPos)) {
+        const key = p.normalizedGloss;
+        if (!key) continue;
+        const b = ensureBucket(buckets, key);
+        // If a real-tier posting already populated this bucket, leave
+        // it alone — the bucket is a real row, not a fuzzy row.
+        // Otherwise remember the smallest BK-tree distance we saw.
+        if (b.fuzzy) {
+          if (fm.distance < b.distance) b.distance = fm.distance;
+        }
+        addEntry(b, p.entryId);
       }
-      addEntry(b, p.entryId);
     }
   }
 

@@ -62,4 +62,16 @@ describe("SettingsView", () => {
     rerender(<SettingsView {...baseProps} dark={true} />);
     expect(screen.getByText(/lacquer black/i)).toBeInTheDocument();
   });
+
+  test("renders data-source attribution with EngMyanDictionary credit and license link", () => {
+    render(<SettingsView {...baseProps} />);
+    expect(screen.getByText(/EngMyanDictionary/i)).toBeInTheDocument();
+    expect(screen.getByText(/Soe Minn Minn/i)).toBeInTheDocument();
+    const license = screen.getByRole("link", { name: /GPL-2\.0/i });
+    expect(license).toHaveAttribute("href");
+    const dataset = screen.getByRole("link", {
+      name: /chuuhtetnaing HuggingFace dataset/i,
+    });
+    expect(dataset.getAttribute("href")).toContain("huggingface.co");
+  });
 });

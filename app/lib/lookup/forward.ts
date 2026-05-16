@@ -14,6 +14,15 @@ import { Tier } from "./types";
  *  resolves to multiple raw entries (same headword, different POS, etc.)
  *  the first is the primary `entry` and the others — plus any peers
  *  sharing a normalized gloss with the primary — land in `mergedPeers`.
+ *
+ *  Peers are filtered by a bidirectional relevance gate
+ *  (`config.maxGlossPosition`): a candidate entry only qualifies as a
+ *  "form" when the shared normalized gloss is one of the primary's
+ *  top-K glosses **and** one of the candidate's top-K glosses. Without
+ *  this filter an entry like သစ်တော (forest/wood/jungle/rain forest)
+ *  drags in every Burmese entry that happens to mention any of those
+ *  words anywhere in their gloss list — even at position 20 — and the
+ *  "Forms" section on the detail panel becomes unreadable.
  */
 export function lookupForward(
   model: DictionaryModel,
@@ -26,23 +35,109 @@ export function lookupForward(
   const peers: Entry[] = direct.slice(1);
   const seen = new Set<number>([primary.entryId, ...peers.map((e) => e.entryId)]);
 
+  const maxPos = model.config.maxGlossPosition;
   // Spec §2.4.3 — peers sharing an identical normalized gloss are
-  // surfaced together. Collect entry IDs across every normalized gloss
-  // of the primary, then fetch them in one batch.
-  const peerIds: number[] = [];
-  for (const norm of primary.normalizedGlosses) {
-    if (!norm) continue;
-    for (const id of model.db.entryIdsForNormalizedGloss(norm)) {
-      if (seen.has(id)) continue;
-      seen.add(id);
-      peerIds.push(id);
+  // surfaced together. Only consider the primary's *top-K* glosses so a
+  // tangential gloss far down the list cannot generate spurious peers.
+  const primaryTopGlosses = primary.normalizedGlosses.slice(0, maxPos);
+  const candidateIds = new Set<number>();
+  // norm → (position-in-primary, [candidate entry IDs])
+  const candidatesByGloss: Array<{ norm: string; primaryPos: number; ids: number[] }> = [];
+  primaryTopGlosses.forEach((norm, primaryPos) => {
+    if (!norm) return;
+    const ids = model.db.entryIdsForNormalizedGloss(norm);
+    if (ids.length === 0) return;
+    candidatesByGloss.push({ norm, primaryPos, ids });
+    for (const id of ids) if (!seen.has(id)) candidateIds.add(id);
+  });
+
+  if (candidateIds.size > 0) {
+    const fetched = model.db.entriesByIds([...candidateIds]);
+    const byId = new Map<number, Entry>(fetched.map((e) => [e.entryId, e]));
+
+    // Score each peer by (primaryPos + peerPos): lower = stronger
+    // relationship. A peer that shares the primary's first gloss as
+    // its own first gloss scores 0 and tops the list; a peer where the
+    // shared gloss is at position 2 on both sides scores 4.
+    type Scored = { entry: Entry; score: number };
+    const scored: Scored[] = [];
+    const scoreById = new Map<number, number>();
+    for (const { norm, primaryPos, ids } of candidatesByGloss) {
+      for (const id of ids) {
+        if (seen.has(id)) continue;
+        const entry = byId.get(id);
+        if (!entry) continue;
+        const peerPos = entry.normalizedGlosses.indexOf(norm);
+        if (peerPos < 0 || peerPos >= maxPos) continue;
+        const thisScore = primaryPos + peerPos;
+        const prev = scoreById.get(id);
+        if (prev === undefined) {
+          scoreById.set(id, thisScore);
+          scored.push({ entry, score: thisScore });
+        } else if (thisScore < prev) {
+          // A stronger overlap on a different shared gloss — keep the
+          // better score. (The dedupe across glosses still works because
+          // we only push to `scored` on first sight.)
+          scoreById.set(id, thisScore);
+          const item = scored.find((s) => s.entry.entryId === id);
+          if (item) item.score = thisScore;
+        }
+      }
     }
-  }
-  if (peerIds.length > 0) {
-    peers.push(...model.db.entriesByIds(peerIds));
+    // Stable sort by score; on ties preserve insertion order so output
+    // remains deterministic.
+    scored.sort((a, b) => a.score - b.score);
+    const cap = model.config.maxFormsPerEntry;
+    const capped = Number.isFinite(cap) ? scored.slice(0, cap) : scored;
+    for (const { entry } of capped) {
+      seen.add(entry.entryId);
+      peers.push(entry);
+    }
   }
 
   return { entry: primary, mergedPeers: peers };
+}
+
+/** Forward lookup with a compound-fallback. Tries an exact match first;
+ *  on a miss, walks contiguous syllable sub-sequences from longest to
+ *  shortest and returns the first match. The Burmese segmenter
+ *  occasionally emits a compound token the dictionary doesn't list as a
+ *  unit (``ညီမလေး`` = ညီမ "younger sister" + လေး diminutive;
+ *  ``တွေနဲ့`` = တွေ plural + နဲ့ "with"); the sub-sequence walk
+ *  surfaces the longest known constituent so the segmenter preview shows
+ *  *something* meaningful rather than an empty card.
+ *
+ *  The minimum sub-sequence length is ``ceil(totalSyllables / 2)``.
+ *  Allowing length 1 unconditionally would produce noisy 1-syllable
+ *  matches on long compounds (``အစစအရာရာ`` would resolve to ``အ`` —
+ *  a particle prefix — which is worse than no match); the floor keeps
+ *  the fallback meaningful while still handling 2-syllable compounds
+ *  like ``တွေနဲ့``. Returns ``null`` only when no sub-sequence at all
+ *  resolves. */
+export function lookupForwardWithCompoundFallback(
+  model: DictionaryModel,
+  headword: string,
+): ForwardResult | null {
+  const exact = lookupForward(model, headword);
+  if (exact) return exact;
+
+  const syllables = segmentSyllables(headword);
+  if (syllables.length <= 1) return null;
+
+  const minLen = Math.max(1, Math.ceil(syllables.length / 2));
+  // Longest match wins; among ties at the same length the leftmost
+  // (most "head-like") wins. The segmenter's syllable boundaries match
+  // the build-time segmenter, so candidate.join("") is the exact form
+  // the entries table would have indexed.
+  for (let len = syllables.length - 1; len >= minLen; len--) {
+    for (let start = 0; start + len <= syllables.length; start++) {
+      const candidate = syllables.slice(start, start + len).join("");
+      if (candidate === headword) continue; // already-tried whole token
+      const result = lookupForward(model, candidate);
+      if (result) return result;
+    }
+  }
+  return null;
 }
 
 /** Forward lookup with a fuzzy fallback. On an exact hit, returns a single

@@ -62,7 +62,9 @@ Screen"), the app works fully offline.
 - Each segmented token is looked up against the Burmese headword index.
 - Results show the English glosses for the entry.
 - Glosses are typically short English counterparts (a list), not long
-  lexicographic definitions — consistent with the Wiktionary-derived data.
+  lexicographic definitions — the pipeline's inversion step (§6.2) extracts
+  the dataset's English headword + synonyms as the gloss list and drops
+  the Burmese-side example sentences.
 
 ### 2.4 Reverse lookup (English → Burmese)
 
@@ -165,39 +167,62 @@ Fuzzy matching is supported for **both** English and Burmese input.
 
 ### 3.1 Dictionary source
 
-- **Primary source:** English Wiktionary, Burmese entries, via the
-  **kaikki.org** pre-parsed extract (produced with `wiktextract`).
-- Format: JSON Lines — one JSON object per line, each with headword, part of
-  speech, and a `senses` array whose entries carry a `glosses` field.
-- For most Burmese entries the glosses are short English counterparts, which
-  matches the desired "list of English counterparts" model.
-- **Coverage:** the kaikki Burmese extract contains **~10,066 entries
-  across ~8,151 unique headwords** (confirmed from the downloaded file).
-  This covers common vocabulary reasonably well but is **modest by
-  general-dictionary standards** — thinner for mid-frequency vocabulary
-  than the earlier "~20–30k" working estimate suggested, and noticeably
-  thinner for rare, inflected, and colloquial terms. Lookup-miss rates
-  will be a real concern; merging the myG2P headword list (§3.2) is
-  recommended to widen the headword set.
-- **License:** CC-BY-SA. Attribution to Wiktionary is required in-app. If the
-  data itself is redistributed, it must remain under a compatible license.
+- **Primary source:** the **EngMyanDictionary** dataset by Soe Minn Minn,
+  redistributed as the
+  `chuuhtetnaing/english-myanmar-dictionary-dataset-EngMyanDictionary`
+  HuggingFace dataset. Originally an Android learner's dictionary
+  (Oxford-style) keyed on English headwords.
+- Format on HuggingFace: parquet shards (one row per English headword)
+  with text columns (`word`, `stripword`, `title`, `definition`,
+  `raw_definition`, `keywords`, `synonym`) plus two PNG-blob columns
+  (`image_definition`, `picture`). The build pipeline **ignores the image
+  columns**; only the text columns are downloaded and processed (the full
+  dataset including images is ~950 MB — they would never fit the offline
+  PWA budget).
+- **Direction inversion (load-bearing design):** the dataset is
+  English-keyed but the app — every query path, every lookup table,
+  every BK-tree, the segmenter integration — is **Burmese-keyed**. The
+  pipeline's `engmyan` step (§6) reads each English row, extracts the
+  Burmese glosses out of its HTML/raw definition, and emits one
+  **Burmese-headword** entry per distinct Burmese term, with the English
+  word (plus synonyms) as its short English counterparts. After this
+  inversion the in-memory shape matches the legacy kaikki shape exactly,
+  so every downstream pipeline stage and the entire frontend continue to
+  work without code changes.
+- **License:** **GPL-2.0** (inherited from
+  `soeminnminn/EngMyanDictionary`). Attribution to "EngMyanDictionary by
+  Soe Minn Minn, via the chuuhtetnaing HuggingFace dataset, GPL-2.0" is
+  surfaced through the Settings view. The shipped `dictionary.sqlite` is
+  a derived work under GPL-2.0; redistributions must comply. This is a
+  **change from v0**, which shipped CC-BY-SA Wiktionary data — the
+  earlier kaikki extract is no longer the source.
+
+#### 3.1.1 Bundle safety net
+
+Because the dataset carries large image columns, the build's `report`
+step enforces a hard ceiling on `dictionary.sqlite`
+(`config.MAX_DB_SIZE_BYTES`, currently 80 MiB) and fails the build if
+exceeded. The text-only inverted DB lands around ~40 MB at the current
+dataset rev; the ceiling sits well above that to absorb legitimate
+coverage growth while still catching an image-column regression
+(which would push the DB into the hundreds of MB).
 
 ### 3.2 Recommended coverage extension
 
-- The **myG2P** Burmese grapheme-to-phoneme dictionary is merged in as a
-  **headword list**. With the kaikki extract sitting at only ~8k headwords
-  (§3.1), this is no longer a nice-to-have: it serves two roles at once —
-  **widening the headword set** so more user input has *some* match, and
-  **aligning the segmenter's vocabulary with the dictionary** so the splits
-  the segmenter produces are more likely to be looked up successfully (the
-  same mitigation called out in §4.3).
+- The **myG2P** Burmese grapheme-to-phoneme dictionary may be merged in
+  as a **headword list** for coverage extension. EngMyanDictionary's
+  Burmese-side coverage is materially wider than the legacy kaikki
+  extract (more distinct Burmese terms after inversion), so myG2P is
+  less load-bearing than it was, but it still helps **align the
+  segmenter's vocabulary with the dictionary** so the splits the
+  segmenter produces are more likely to be looked up successfully (the
+  mitigation called out in §4.3).
 - myG2P provides **no English translations** and is not a definition source.
-  Merged headwords that have no kaikki gloss are surfaced as
+  Merged headwords that have no EngMyan gloss are surfaced as
   headword-only entries (i.e. the app can confirm the word exists, but has
   no English meaning to show).
 - The merge remains technically optional in the pipeline (the `merge-g2p`
-  step can be skipped on developer machines that don't have myG2P
-  available), but production builds are expected to include it.
+  step is a stub today; revisit if real-world miss rates motivate it).
 
 ### 3.3 Shipped data assets
 
@@ -225,14 +250,15 @@ The build pipeline produces the following static assets:
 - **Indexed** on the headword column for fast lookup. The English inverted
   index is indexed for reverse lookup. No unnecessary secondary indexes.
 - **VACUUM**ed after build to reclaim free pages.
-- **Estimated size:** at the actual entry count (~10k entries / ~8k
-  headwords, §3.1), the built database is expected to sit **comfortably
-  at or below the low end of the previously projected 2–5 MB range** —
-  on the order of **~1–2 MB** after stripping, indexing, and VACUUM. This
-  is good news for the PWA payload (§5.1) and effectively removes the
-  SQLite file as a meaningful contributor to first-load size; the n-gram
-  data (§4.2.3) is the dominant payload concern. The build pipeline
-  reports the actual size in its final step (§6.10).
+- **Estimated size:** the EngMyanDictionary-derived database carries
+  more entries than the legacy kaikki source (the dataset has tens of
+  thousands of English rows; after inversion + merging the distinct
+  Burmese-headword count rises in proportion to how many English senses
+  share each term). Even so the shipped DB stays in the low single-digit
+  MB range — text payload only, never images. The build's `report` step
+  prints the actual size, and a hard ceiling (`MAX_DB_SIZE_BYTES`,
+  §3.1.1) fails the build if a regression bloats it past 15 MiB. The
+  n-gram data (§4.2.3) remains the dominant first-load concern.
 
 ### 3.5 Client-side database access
 
@@ -284,14 +310,12 @@ The build pipeline produces the following static assets:
 ### 4.3 Segmenter ↔ dictionary vocabulary mismatch
 
 - The myWord n-gram dictionaries were built from a **different corpus** than
-  Wiktionary. The segmenter can produce tokens that are not Wiktionary
-  headwords, and miss splits that would have matched.
+  EngMyanDictionary. The segmenter can produce tokens that are not
+  dictionary headwords, and miss splits that would have matched.
 - This causes lookup misses that are **boundary disagreements**, not genuine
   "rare word" misses.
 - Mitigations:
   - Merge the **myG2P headword list** (Section 3.2) to align vocabularies.
-    Given the modest ~8k kaikki headword count, this is the primary lever
-    and is expected in production builds.
   - Define token-miss fallback behavior (Section 2.2) — e.g. retrying with
     stripped particles or adjacent-token combinations.
 
@@ -308,8 +332,9 @@ The build pipeline produces the following static assets:
 
 ### 5.2 Versioning & updates
 
-- Dictionary/data updates are **manual** — the maintainer reships assets when
-  desired (Wiktionary grows over time; there is no automatic update).
+- Dictionary/data updates are **manual** — the maintainer reships assets
+  when desired (the upstream EngMyanDictionary dataset can change; there
+  is no automatic update).
 - A **version string is embedded** in the data assets and known to the service
   worker.
 - The service worker uses the version stamp to **invalidate stale caches** and
@@ -330,13 +355,19 @@ The build pipeline produces the following static assets:
 
 The build pipeline is a static-asset generator. It must:
 
-1. Download the kaikki.org Burmese JSONL extract.
-2. Strip entries to the required fields; join glosses.
+1. Download the EngMyanDictionary HuggingFace dataset, **text columns
+   only** (image columns are explicitly excluded — see §3.1).
+2. **Ingest and invert** every dataset row: parse the HTML/raw-text
+   Myanmar definition into discrete Burmese terms, NFC-normalize them,
+   and emit one Burmese-headword entry per distinct term whose glosses
+   are the English `word` (plus dataset synonyms). This step replaces
+   the legacy kaikki `strip` step as the dictionary-source loader; the
+   in-memory `StrippedEntry` shape is preserved so every downstream
+   stage works unchanged.
 3. Build the **English inverted index** with normalization, stopword removal,
    `"to "` stripping, and whole-gloss/head-of-gloss preference.
 4. Merge the **myG2P headword list** for coverage and segmenter-vocabulary
-   alignment (recommended for production builds; the step is skippable on
-   developer machines that don't have myG2P available — see §3.2).
+   alignment (optional — see §3.2; remains a stub in this version).
 5. Build the **SQLite database**, create the headword and inverted-index
    indexes, and **VACUUM**.
 6. Convert the myWord **pickled n-gram dictionaries** to a JS-loadable format;
@@ -347,7 +378,8 @@ The build pipeline is a static-asset generator. It must:
    headwords) — this step requires the **syllable segmenter available at build
    time**.
 9. Emit a **version stamp** embedded in the data assets.
-10. Report the final **entry count** and **asset sizes**.
+10. Report the final **entry count** and **asset sizes**, and **fail the
+    build if `dictionary.sqlite` exceeds the size ceiling** (§3.1.1).
 
 ---
 
@@ -385,11 +417,10 @@ The build pipeline is a static-asset generator. It must:
 - **Debounce interval** — start ~200–300 ms; tune.
 - **Token-miss fallback** — finalize behavior for Burmese tokens not found in
   the dictionary.
-- ~~**kaikki Burmese entry count** — confirm from the source.~~ **Resolved:**
-  the downloaded extract contains **~10,066 entries across ~8,151 unique
-  headwords** (§3.1). This is meaningfully below the earlier "~20–30k"
-  working estimate; coverage phrasing and the myG2P merge recommendation
-  have been revised accordingly (§3.1, §3.2).
+- ~~**kaikki Burmese entry count** — confirm from the source.~~ Superseded
+  by the v1 migration to EngMyanDictionary (§3.1). kaikki is no longer
+  the source; the relevant figure now is the count of **distinct Burmese
+  headwords produced after inversion**, reported by `data-pipeline all`.
 
 ---
 

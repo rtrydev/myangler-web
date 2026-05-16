@@ -4,8 +4,12 @@ Each pipeline step from spec §6 is exposed as its own subcommand; the
 ``all`` command runs every implemented step in dependency order against
 a single streamed pass over the input file.
 
-``merge-g2p`` remains a logging-only stub (v1 ships on Wiktionary data
-only — see ``README.md`` and the task brief).
+Primary input is the **EngMyanDictionary** HuggingFace dataset, ingested
+and inverted into Burmese-keyed entries by the ``engmyan`` step. The
+legacy kaikki ``strip`` step is preserved as a standalone subcommand for
+back-compat / regression testing but is not part of the default chain.
+
+``merge-g2p`` remains a logging-only stub.
 """
 
 from __future__ import annotations
@@ -24,6 +28,8 @@ from data_pipeline.config import (
     DEFAULT_INPUT_PATH,
     DEFAULT_NGRAM_DIR,
     DEFAULT_OUTPUT_DIR,
+    LEGACY_KAIKKI_INPUT_PATH,
+    MAX_DB_SIZE_BYTES,
     NGRAM_FILENAME,
     VERSION_FILENAME,
     PipelineConfig,
@@ -37,7 +43,9 @@ from data_pipeline.steps.convert_ngram import (
     NgramStats,
     convert_ngram_to_default,
 )
+from data_pipeline.steps.engmyan import EngmyanStats, invert_engmyan
 from data_pipeline.steps.index_en import IndexStats, build_index
+from data_pipeline.steps.merge import MergeStats, merge_dictionaries
 from data_pipeline.steps.report import (
     NgramReport,
     PipelineReport,
@@ -51,11 +59,18 @@ logger = logging.getLogger("data_pipeline")
 
 
 # Ordered list of (subcommand, help text). Order is the order ``all`` runs
-# them in — mirrors spec §6 steps 2–10. ``merge-g2p`` and ``convert-ngram``
-# remain stubs in this task.
+# them in — mirrors spec §6 steps 2–10. ``merge-g2p`` remains a stub.
 PIPELINE_STEPS: list[tuple[str, str]] = [
-    ("load", "Load and validate the raw kaikki Burmese JSONL extract."),
-    ("strip", "Strip entries to required fields and join glosses (spec §6.2)."),
+    ("load", "Load and validate the EngMyanDictionary JSONL extract."),
+    (
+        "engmyan",
+        "Ingest the EngMyanDictionary dataset and invert it into Burmese-keyed "
+        "entries (spec §6.2 — replaces the legacy ``strip`` step).",
+    ),
+    (
+        "strip",
+        "Legacy kaikki strip step (back-compat for tests; no longer in `all`).",
+    ),
     ("index-en", "Build the English inverted index (spec §6.3)."),
     ("merge-g2p", "Optionally merge the myG2P headword list (spec §6.4)."),
     ("build-db", "Build, index, and VACUUM the SQLite database (spec §6.5)."),
@@ -67,8 +82,10 @@ PIPELINE_STEPS: list[tuple[str, str]] = [
 ]
 
 # Steps `all` actually runs (in this order). ``merge-g2p`` remains a stub.
+# Note ``strip`` is intentionally absent — the EngMyanDictionary
+# ingestion+inversion (``engmyan``) replaces it as the dictionary source.
 ALL_STEPS: tuple[str, ...] = (
-    "strip",
+    "engmyan",
     "index-en",
     "build-db",
     "convert-ngram",
@@ -97,6 +114,7 @@ def _config_from_args(args: argparse.Namespace) -> PipelineConfig:
         input_path=Path(args.input).resolve(),
         output_dir=Path(args.output_dir).resolve(),
         ngram_dir=Path(args.ngram_dir).resolve(),
+        kaikki_input_path=Path(args.kaikki_input).resolve(),
     )
 
 
@@ -126,7 +144,25 @@ def cmd_load(args: argparse.Namespace) -> int:
     return 0
 
 
+def _stream_and_invert(cfg: PipelineConfig) -> tuple[list, EngmyanStats, ReadStats]:
+    """Primary input loader: EngMyanDictionary JSONL → Burmese-keyed entries."""
+    read_stats = ReadStats()
+    invert_stats = EngmyanStats()
+    entries = list(
+        invert_engmyan(
+            iter_jsonl(cfg.input_path, stats=read_stats),
+            stats=invert_stats,
+        )
+    )
+    return entries, invert_stats, read_stats
+
+
 def _stream_and_strip(cfg: PipelineConfig) -> tuple[list, StripStats, ReadStats]:
+    """Legacy loader for the kaikki JSONL; back-compat only.
+
+    The ``strip`` subcommand still uses this so existing fixture tests
+    keep working; ``all`` switched to :func:`_stream_and_invert`.
+    """
     read_stats = ReadStats()
     strip_stats = StripStats()
     entries = list(
@@ -135,8 +171,45 @@ def _stream_and_strip(cfg: PipelineConfig) -> tuple[list, StripStats, ReadStats]
     return entries, strip_stats, read_stats
 
 
+def cmd_engmyan(args: argparse.Namespace) -> int:
+    cfg = _config_from_args(args)
+    err = _require_input(cfg)
+    if err is not None:
+        # Mirror convert-ngram's pattern: actionable instruction, no
+        # stack trace at the user.
+        logger.error(
+            "EngMyanDictionary input not found at %s.\n"
+            "Fetch it with: python tools/data-pipeline/scripts/download_engmyan.py",
+            cfg.input_path,
+        )
+        return 1
+    ensure_output_dir(cfg.output_dir)
+    entries, invert_stats, read_stats = _stream_and_invert(cfg)
+    print(f"raw rows           : {read_stats.parsed}")
+    print(f"malformed skipped  : {read_stats.skipped}")
+    print(f"dropped (no Burmese): {invert_stats.dropped_no_burmese}")
+    print(f"Burmese terms (pre-merge): {invert_stats.burmese_terms_emitted}")
+    print(f"distinct headwords : {invert_stats.distinct_headwords}")
+    print(f"emitted entries    : {invert_stats.stripped}")
+    print(f"empty glosses      : {invert_stats.empty_glosses}")
+    print(f"pos inferred       : {invert_stats.pos_inferred}")
+    return 0 if entries else 1
+
+
 def cmd_strip(args: argparse.Namespace) -> int:
     cfg = _config_from_args(args)
+    # `strip` is back-compat only — default it to the legacy kaikki
+    # input so existing workflows keep working.
+    if cfg.input_path == DEFAULT_INPUT_PATH:
+        cfg = PipelineConfig(
+            input_path=LEGACY_KAIKKI_INPUT_PATH,
+            output_dir=cfg.output_dir,
+            myg2p_path=cfg.myg2p_path,
+            ngram_dir=cfg.ngram_dir,
+            fuzzy_threshold_en=cfg.fuzzy_threshold_en,
+            fuzzy_threshold_my=cfg.fuzzy_threshold_my,
+            stopwords=cfg.stopwords,
+        )
     err = _require_input(cfg)
     if err is not None:
         return err
@@ -157,7 +230,7 @@ def cmd_index_en(args: argparse.Namespace) -> int:
     if err is not None:
         return err
     ensure_output_dir(cfg.output_dir)
-    entries, _, _ = _stream_and_strip(cfg)
+    entries, _, _ = _stream_and_invert(cfg)
     stats = IndexStats()
     index = build_index(entries, stopwords=cfg.stopwords, stats=stats)
     print(f"glosses indexed    : {stats.glosses_indexed}")
@@ -170,18 +243,37 @@ def cmd_index_en(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_db_size(size: int) -> int:
+    """Bundle safety net: fail loudly if `dictionary.sqlite` is huge.
+
+    EngMyanDictionary's image columns would balloon the bundle if a
+    future change re-introduces them. The ``engmyan`` ingestion step
+    and downloader explicitly exclude images, so a DB beyond the
+    ceiling signals a real regression — exit 1 with a pointer.
+    """
+    if size > MAX_DB_SIZE_BYTES:
+        logger.error(
+            "dictionary.sqlite is %d bytes — exceeds %d-byte safety ceiling. "
+            "Suspect: image columns leaked through. See docs/burmese-dictionary-spec.md §3.1.",
+            size,
+            MAX_DB_SIZE_BYTES,
+        )
+        return 1
+    return 0
+
+
 def cmd_build_db(args: argparse.Namespace) -> int:
     cfg = _config_from_args(args)
     err = _require_input(cfg)
     if err is not None:
         return err
     ensure_output_dir(cfg.output_dir)
-    entries, _, _ = _stream_and_strip(cfg)
+    entries, _, _ = _stream_and_invert(cfg)
     index = build_index(entries, stopwords=cfg.stopwords)
     db_path = output_path(cfg.output_dir, DB_FILENAME)
     size = build_database(db_path, entries, index)
     print(f"wrote {db_path} ({size} bytes)")
-    return 0
+    return _check_db_size(size)
 
 
 def cmd_bktree_en(args: argparse.Namespace) -> int:
@@ -190,7 +282,7 @@ def cmd_bktree_en(args: argparse.Namespace) -> int:
     if err is not None:
         return err
     ensure_output_dir(cfg.output_dir)
-    entries, _, _ = _stream_and_strip(cfg)
+    entries, _, _ = _stream_and_invert(cfg)
     index = build_index(entries, stopwords=cfg.stopwords)
     tree = build_english_bktree(index)
     out = output_path(cfg.output_dir, BKTREE_EN_FILENAME)
@@ -205,7 +297,7 @@ def cmd_bktree_my(args: argparse.Namespace) -> int:
     if err is not None:
         return err
     ensure_output_dir(cfg.output_dir)
-    entries, _, _ = _stream_and_strip(cfg)
+    entries, _, _ = _stream_and_invert(cfg)
     tree = build_burmese_bktree(entries)
     out = output_path(cfg.output_dir, BKTREE_MY_FILENAME)
     size = write_burmese_bktree(out, tree)
@@ -280,21 +372,69 @@ def _make_stub(step_name: str, description: str) -> Callable[[argparse.Namespace
 def _run_all(cfg: PipelineConfig) -> int:
     """Run the full implemented pipeline.
 
-    Streams the JSONL once, then reuses the stripped representation
+    Streams the JSONL once, then reuses the inverted representation
     across every downstream stage (spec acceptance criterion: avoid
-    re-reading the input ~10k-line file once per stage).
+    re-reading the input file once per stage).
     """
     ensure_output_dir(cfg.output_dir)
 
-    logger.info("[strip] stripping entries from %s", cfg.input_path)
+    logger.info("[engmyan] ingesting + inverting %s", cfg.input_path)
     read_stats = ReadStats()
-    strip_stats = StripStats()
-    entries = list(
-        strip_entries(iter_jsonl(cfg.input_path, stats=read_stats), stats=strip_stats)
+    invert_stats = EngmyanStats()
+    engmyan_entries = list(
+        invert_engmyan(
+            iter_jsonl(cfg.input_path, stats=read_stats),
+            stats=invert_stats,
+        )
     )
-    if not entries:
-        logger.error("strip produced 0 entries; aborting")
+    if not engmyan_entries:
+        logger.error(
+            "engmyan produced 0 entries; aborting. "
+            "Run: python tools/data-pipeline/scripts/download_engmyan.py"
+        )
         return 1
+
+    # Hybrid pass: layer in the legacy kaikki-derived entries when their
+    # JSONL is available. kaikki has dedicated POS-specific entries for
+    # Burmese grammar particles (``တယ်``, ``တဲ့``, ``ပါ`` as particle,
+    # …) that EngMyanDictionary's English-keyed shape cannot capture.
+    # See ``steps/merge.py`` for the precedence rules.
+    kaikki_entries: list = []
+    kaikki_read_stats: ReadStats | None = None
+    kaikki_strip_stats: StripStats | None = None
+    if cfg.kaikki_input_path.exists():
+        logger.info("[kaikki-overlay] stripping legacy %s", cfg.kaikki_input_path)
+        kaikki_read_stats = ReadStats()
+        kaikki_strip_stats = StripStats()
+        kaikki_entries = list(
+            strip_entries(
+                iter_jsonl(cfg.kaikki_input_path, stats=kaikki_read_stats),
+                stats=kaikki_strip_stats,
+            )
+        )
+        logger.info(
+            "[kaikki-overlay] %d kaikki entries from %d distinct headwords",
+            len(kaikki_entries),
+            kaikki_strip_stats.distinct_headwords,
+        )
+    else:
+        logger.info(
+            "[kaikki-overlay] %s not present — skipping (engmyan-only build)",
+            cfg.kaikki_input_path,
+        )
+
+    merge_stats = MergeStats()
+    entries = merge_dictionaries(
+        kaikki_entries, engmyan_entries, stats=merge_stats
+    )
+    logger.info(
+        "[merge] kaikki kept=%d, engmyan kept=%d (dropped %d as already in kaikki); "
+        "total %d distinct headwords",
+        merge_stats.kaikki_kept,
+        merge_stats.engmyan_kept,
+        merge_stats.engmyan_dropped,
+        merge_stats.distinct_headwords,
+    )
 
     logger.info("[index-en] building inverted index")
     index_stats = IndexStats()
@@ -305,7 +445,10 @@ def _run_all(cfg: PipelineConfig) -> int:
 
     logger.info("[build-db] writing SQLite database")
     db_path = output_path(cfg.output_dir, DB_FILENAME)
-    build_database(db_path, entries, index)
+    db_size = build_database(db_path, entries, index)
+    rc = _check_db_size(db_size)
+    if rc != 0:
+        return rc
 
     logger.info("[convert-ngram] converting myWord pickled n-grams")
     ngram_path = output_path(cfg.output_dir, NGRAM_FILENAME)
@@ -341,9 +484,9 @@ def _run_all(cfg: PipelineConfig) -> int:
     }
     report = PipelineReport(
         raw_entries=read_stats.parsed,
-        stripped_entries=strip_stats.stripped,
-        distinct_headwords=strip_stats.distinct_headwords,
-        empty_glosses=strip_stats.empty_glosses,
+        stripped_entries=invert_stats.stripped,
+        distinct_headwords=invert_stats.distinct_headwords,
+        empty_glosses=invert_stats.empty_glosses,
         distinct_words=index_stats.distinct_words,
         total_postings=index_stats.postings,
         asset_sizes=measure_asset_sizes(asset_paths),
@@ -371,6 +514,7 @@ def _run_all(cfg: PipelineConfig) -> int:
 
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "load": cmd_load,
+    "engmyan": cmd_engmyan,
     "strip": cmd_strip,
     "index-en": cmd_index_en,
     "build-db": cmd_build_db,
@@ -400,7 +544,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input",
         default=str(DEFAULT_INPUT_PATH),
-        help="path to the raw kaikki Burmese JSONL (default: %(default)s)",
+        help=(
+            "path to the EngMyanDictionary JSONL extract "
+            "(default: %(default)s). The ``strip`` subcommand falls back to "
+            "the legacy kaikki path when this flag is left at the default."
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -413,6 +561,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "directory holding the myWord pickled n-gram dictionaries "
             "(unigram-word.bin, bigram-word.bin) — see README (default: %(default)s)"
+        ),
+    )
+    parser.add_argument(
+        "--kaikki-input",
+        default=str(LEGACY_KAIKKI_INPUT_PATH),
+        help=(
+            "path to the optional kaikki Burmese JSONL extract. When the "
+            "file exists, ``all`` layers its entries onto the EngMyan-"
+            "derived ones — kaikki takes precedence on shared headwords, "
+            "so its dedicated POS-specific particle entries lead. Point "
+            "at a non-existent path to disable (default: %(default)s)."
         ),
     )
     parser.add_argument(
@@ -433,10 +592,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "all",
         help="Run every implemented pipeline step in order (spec §6).",
         description=(
-            "Run strip → index-en → build-db → convert-ngram → bktree-en → "
+            "Run engmyan → index-en → build-db → convert-ngram → bktree-en → "
             "bktree-my → version → report against a single streaming pass "
-            "over the input file. merge-g2p is skipped (stub — v1 ships on "
-            "Wiktionary data only)."
+            "over the input file. merge-g2p is skipped (stub). The legacy "
+            "``strip`` step (kaikki-derived) is no longer in the default "
+            "chain — see docs/burmese-dictionary-spec.md §3.1 for the "
+            "data-source migration."
         ),
     )
     sp_all.set_defaults(handler=cmd_all)
