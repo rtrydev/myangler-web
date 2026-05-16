@@ -29,6 +29,12 @@ export const SEARCH_FIXTURE: FixtureEntry[] = [
   // exercising the null-result branch of the breakdown.
   // A pure English-side entry so reverse lookup has more to chew on.
   { entryId: 3, headword: "ရေ", pos: "noun", glosses: ["water"] },
+  // Multi-word English gloss for the English-sentence segmenter:
+  // "new year" must collapse to one tile.
+  { entryId: 4, headword: "နှစ်သစ်", pos: "noun", glosses: ["new year"] },
+  // Single-word gloss so a mixed-segment sentence like "happy new
+  // year" produces a known leading tile alongside the phrase group.
+  { entryId: 5, headword: "ပျော်", pos: "adj", glosses: ["happy"] },
 ];
 
 /** Construct a ready-to-query orchestrator engine using the shared

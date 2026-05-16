@@ -261,6 +261,23 @@ body {
   border-bottom-style: dashed;
 }
 .wblock.unknown .w-en { color: var(--ink-faint); }
+/* English-primary layout: English source large on top, Burmese
+   translation small below. Used by the eng→mm sentence breakdown. */
+.wblock .w-en-top {
+  font-family: var(--font-spectral), serif;
+  font-size: 16px;
+  color: var(--ink);
+  line-height: 1.3;
+  text-align: center;
+}
+.wblock .w-mm-sub {
+  font-family: var(--font-noto-mm), serif;
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.25;
+  text-align: center;
+}
+.wblock.unknown .w-mm-sub { color: var(--ink-faint); }
 
 /* ─────────────────────────────────────────────────────────────
    Result row

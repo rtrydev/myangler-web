@@ -72,6 +72,7 @@ export function SearchContent({
   if (result.kind === "breakdown") {
     return (
       <BreakdownView
+        script={result.script}
         tokens={result.tokens}
         selectedEntryId={selectedEntryId}
         onSelectToken={onSelectToken}
@@ -175,30 +176,44 @@ function IdleView({
 /* ────────────────────── Breakdown ─────────────────────── */
 
 function BreakdownView({
+  script,
   tokens,
   selectedEntryId,
   onSelectToken,
 }: {
+  script: "burmese" | "english";
   tokens: readonly BreakdownToken[];
   selectedEntryId: number | null;
   onSelectToken?: (token: BreakdownToken) => void;
 }) {
   const knownTokens = tokens.filter(t => t.result !== null);
   const wordCount = knownTokens.length;
+  const isEnglish = script === "english";
+  // For Burmese the sentence preview reads naturally with no spaces
+  // (the segmenter removed them at preprocess time). For English we
+  // re-introduce a single space between display tokens so the user can
+  // recognize the sentence they typed alongside the grouped phrases.
+  const sentencePreview = tokens.map(t => t.token).join(isEnglish ? " " : "");
   return (
     <div
       className="flex-1 min-h-0 overflow-y-auto no-scroll paper-tex"
       data-testid="breakdown-view"
+      data-script={script}
     >
       <div className="px-4 pt-1 pb-4">
         <div className="mt-2 mb-4">
           <Eyebrow withRule>
             {wordCount === 1 ? "1 word" : `${wordCount} words`}
+            {isEnglish ? " · English → မြန်မာ" : ""}
           </Eyebrow>
         </div>
 
-        <div className="mm text-xl text-ink-2 leading-relaxed pb-3.5 mb-4 border-b border-dashed border-border-2">
-          {tokens.map(t => t.token).join("")}
+        <div
+          className={`${
+            isEnglish ? "serif" : "mm"
+          } text-xl text-ink-2 leading-relaxed pb-3.5 mb-4 border-b border-dashed border-border-2`}
+        >
+          {sentencePreview}
           <div className="serif italic text-[13px] text-ink-3 mt-1.5">
             tap any block for the full entry
           </div>
@@ -207,14 +222,22 @@ function BreakdownView({
         <div className="flex flex-wrap gap-2">
           {tokens.map((token, i) => {
             const entry = token.result?.entry;
-            const en = entry?.glosses[0] ?? "—";
+            // In Burmese mode the tile's secondary label is the first
+            // English gloss of the matched entry; in English mode it
+            // is the matched Burmese headword (the translation). The
+            // tile's `primary` prop flips the typography so the source
+            // token always reads as the larger, primary line.
+            const secondary = isEnglish
+              ? entry?.headword ?? "—"
+              : entry?.glosses[0] ?? "—";
             const isSelected =
               !!entry && selectedEntryId !== null && entry.entryId === selectedEntryId;
             return (
               <WordBlock
                 key={`${token.token}-${i}`}
-                mm={token.token}
-                en={en}
+                mm={isEnglish ? secondary : token.token}
+                en={isEnglish ? token.token : secondary}
+                primary={isEnglish ? "en" : "mm"}
                 selected={isSelected}
                 unknown={token.result === null}
                 role="button"

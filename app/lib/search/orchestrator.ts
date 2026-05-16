@@ -23,6 +23,7 @@ import {
   lookupForwardWithCompoundFallback,
   lookupReverse,
   searchBurmese,
+  segmentEnglish,
 } from "@/app/lib/lookup";
 
 import { DEFAULT_CONFIG, type SearchConfig } from "./config";
@@ -140,10 +141,7 @@ export function search(engine: SearchEngine, input: string): SearchResult {
     case "mixed":
       return burmesePath(engine, trimmed, true);
     case "latin":
-      return {
-        kind: "reverse",
-        rows: lookupReverse(engine.dictionary, trimmed),
-      };
+      return latinPath(engine, trimmed);
     case "unknown":
       return { kind: "unrecognized" };
   }
@@ -214,7 +212,55 @@ function burmesePath(
   }));
   return {
     kind: "breakdown",
+    script: "burmese",
     mixedInput,
     tokens,
+  };
+}
+
+/** Latin path. View selection follows the *result shape*, not the
+ *  surface shape of the input: every English input is run through the
+ *  segmenter, then dispatched by `segments.length`.
+ *
+ *    - **1 segment** — a single logical query, whether the input was
+ *      one word ("water"), a known multi-word phrase ("thank you"),
+ *      or a "to <verb>" infinitive that collapses to its stripped
+ *      head ("to protect" → "protect"). Render as the ranked
+ *      reverse-lookup so the user sees every Burmese entry that owns
+ *      the gloss, not a one-tile breakdown. Passing the *original*
+ *      input to `lookupReverse` lets the lookup module's own
+ *      `normalizeGloss` (lowercase, collapse-ws, strip leading
+ *      ``"to "``) reshape the query into the canonical key.
+ *
+ *    - **≥ 2 segments** — genuine sentence structure (parse-it-into-
+ *      tiles UX). Render the breakdown with one tappable tile per
+ *      segment.
+ *
+ *  Driving the choice off `segments.length` instead of an input-
+ *  surface heuristic also stabilizes the view across keystrokes: a
+ *  half-typed "to protec" registers as two unmatched atoms (breakdown,
+ *  2 unknown tiles), and the moment the typo resolves to "to protect"
+ *  the result collapses to one segment and the view smoothly returns
+ *  to the single-query rendering. Without this rule the view would
+ *  remain stuck in breakdown mode on a fully-resolved one-segment
+ *  input.
+ *
+ *  Per-segment fuzzy rescue is intentionally NOT performed inside the
+ *  segmenter — same rationale as the Burmese eager-exact path: it
+ *  would surface noisy near-matches for common short connecting words
+ *  like "is" or "the". */
+function latinPath(engine: SearchEngine, input: string): SearchResult {
+  const segments = segmentEnglish(engine.dictionary, input);
+  if (segments.length <= 1) {
+    return {
+      kind: "reverse",
+      rows: lookupReverse(engine.dictionary, input),
+    };
+  }
+  return {
+    kind: "breakdown",
+    script: "english",
+    mixedInput: false,
+    tokens: segments,
   };
 }

@@ -47,4 +47,30 @@ describe("WordBlock", () => {
     expect(longMm.style.fontSize).toBe("17px");
     expect(shortMm.style.fontSize).toBe("20px");
   });
+
+  test("primary='en' flips the layout: English on top, Burmese as the smaller subtitle", () => {
+    render(
+      <WordBlock
+        mm="နှစ်သစ်"
+        en="new year"
+        primary="en"
+        data-testid="wb"
+      />,
+    );
+    const block = screen.getByTestId("wb");
+    expect(block).toHaveClass("wblock", "en-primary");
+    // Both labels still render, just under the eng-primary class set.
+    const en = screen.getByText("new year");
+    const mm = screen.getByText("နှစ်သစ်");
+    expect(en).toHaveClass("w-en-top");
+    expect(mm).toHaveClass("w-mm-sub");
+  });
+
+  test("primary='mm' (default) keeps the original layout", () => {
+    render(<WordBlock mm="ဒီနေ့" en="today" data-testid="wb" />);
+    const block = screen.getByTestId("wb");
+    expect(block).not.toHaveClass("en-primary");
+    expect(screen.getByText("ဒီနေ့")).toHaveClass("w-mm");
+    expect(screen.getByText("today")).toHaveClass("w-en");
+  });
 });

@@ -53,13 +53,24 @@ export interface UnrecognizedResult {
   kind: "unrecognized";
 }
 
-/** Burmese (or mixed) input: an ordered breakdown of segmented tokens,
- *  each carrying its eager exact-forward-lookup result. */
+/** Sentence-style input: an ordered breakdown of segmented tokens, each
+ *  carrying its eager exact-forward-lookup result. Returned for Burmese
+ *  / mixed inputs (always — even a single-word Burmese query stays a
+ *  one-token breakdown so the search-tab UX is consistent) and for
+ *  multi-word English inputs (where the engine groups known multi-word
+ *  glosses like "new year" into a single token). Single-word English
+ *  queries skip this kind and produce a `reverse` result instead. */
 export interface BreakdownResult {
   kind: "breakdown";
-  /** `true` when the input contained both Burmese and Latin letters. The
-   *  Burmese segmenter still drives token extraction; non-Burmese runs
-   *  segment but generally do not yield dictionary hits. */
+  /** Discriminator on the input language. `"burmese"` covers Burmese
+   *  and mixed inputs (the Burmese segmenter still drives token
+   *  extraction in the mixed case); `"english"` covers multi-word
+   *  English. The UI uses this to pick the right tile direction
+   *  (Burmese token on top vs. English token on top). */
+  script: "burmese" | "english";
+  /** `true` when the input contained both Burmese and Latin letters.
+   *  Only meaningful when `script === "burmese"`; always `false` for
+   *  `script === "english"`. */
   mixedInput: boolean;
   tokens: BreakdownToken[];
 }

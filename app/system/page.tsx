@@ -254,6 +254,23 @@ export default function Page() {
               We give our best split. If a word looks off, look it up alone in the box above.
             </Note>
           </Card>
+
+          {/* English-primary variant: English source on top, Burmese
+              translation small below. Used by the eng→mm sentence
+              breakdown. */}
+          <Card className="mt-4 p-6 space-y-4">
+            <div className="serif text-xl text-ink-2 leading-relaxed pb-4 border-b border-dashed border-border-2">
+              Happy New Year
+              <div className="serif italic text-sm text-ink-3 mt-1">
+                English → မြန်မာ · multi-word phrases group into one block
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <WordBlock primary="en" en="Happy" mm="ပျော်" />
+              <WordBlock primary="en" en="New Year" mm="နှစ်သစ်" />
+              <WordBlock primary="en" en="zzz" mm="—" unknown />
+            </div>
+          </Card>
         </section>
 
         {/* ─── Result rows ─── */}

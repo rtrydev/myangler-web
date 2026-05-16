@@ -18,6 +18,12 @@ export {
 } from "./forward";
 export { lookupReverse } from "./reverse";
 export { searchBurmese } from "./burmeseSearch";
+export {
+  segmentEnglish,
+  lookupEnglishForward,
+  isEnglishSentence,
+  type EnglishSegment,
+} from "./englishSegment";
 
 export { normalizeGloss, tokenizeGlossWords } from "./normalize";
 

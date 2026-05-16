@@ -28,12 +28,40 @@ const tooLong: SearchResult = { kind: "too_long", limit: 100, length: 250 };
 
 const breakdown: SearchResult = {
   kind: "breakdown",
+  script: "burmese",
   mixedInput: false,
   tokens: [
     { token: "ရေ", result: { entry: sampleEntry, mergedPeers: [] } },
     { token: " ", result: null },
     { token: "ရေချိုး", result: { entry: peerEntry, mergedPeers: [] } },
     { token: "ဥ", result: null },
+  ],
+};
+
+const newYearEntry: Entry = {
+  entryId: 10,
+  headword: "နှစ်သစ်",
+  pos: "noun",
+  glosses: ["new year"],
+  normalizedGlosses: ["new year"],
+  ipa: null,
+};
+const happyEntry: Entry = {
+  entryId: 11,
+  headword: "ပျော်",
+  pos: "adj",
+  glosses: ["happy"],
+  normalizedGlosses: ["happy"],
+  ipa: null,
+};
+const englishBreakdown: SearchResult = {
+  kind: "breakdown",
+  script: "english",
+  mixedInput: false,
+  tokens: [
+    { token: "happy", result: { entry: happyEntry, mergedPeers: [] } },
+    { token: "new year", result: { entry: newYearEntry, mergedPeers: [] } },
+    { token: "absent", result: null },
   ],
 };
 
@@ -146,6 +174,62 @@ describe("SearchContent · breakdown", () => {
     render(<SearchContent result={breakdown} selectedEntryId={1} />);
     const block = screen.getByText("ရေ").closest(".wblock");
     expect(block).toHaveClass("selected");
+  });
+});
+
+describe("SearchContent · English breakdown", () => {
+  test("renders one tile per English segment, including unknown ones", () => {
+    render(<SearchContent result={englishBreakdown} />);
+    const view = screen.getByTestId("breakdown-view");
+    expect(view).toHaveAttribute("data-script", "english");
+    expect(screen.getByText("happy")).toBeInTheDocument();
+    expect(screen.getByText("new year")).toBeInTheDocument();
+    expect(screen.getByText("absent")).toBeInTheDocument();
+  });
+
+  test("English tile shows the Burmese translation as the secondary label", () => {
+    render(<SearchContent result={englishBreakdown} />);
+    expect(screen.getByText("နှစ်သစ်")).toBeInTheDocument();
+    expect(screen.getByText("ပျော်")).toBeInTheDocument();
+  });
+
+  test("flagged via the en-primary class so the tile flips its typography", () => {
+    render(<SearchContent result={englishBreakdown} />);
+    const block = screen.getByText("new year").closest(".wblock");
+    expect(block).toHaveClass("en-primary");
+  });
+
+  test("counts only resolvable English segments in the header", () => {
+    render(<SearchContent result={englishBreakdown} />);
+    // 'happy' and 'new year' resolve; 'absent' does not.
+    expect(screen.getByText(/2 words/)).toBeInTheDocument();
+  });
+
+  test("clicking a known English tile fires onSelectToken with that segment", async () => {
+    const user = userEvent.setup();
+    const onSelectToken = vi.fn();
+    render(
+      <SearchContent
+        result={englishBreakdown}
+        onSelectToken={onSelectToken}
+      />,
+    );
+    await user.click(screen.getByText("new year").closest(".wblock")!);
+    expect(onSelectToken).toHaveBeenCalledTimes(1);
+    expect(onSelectToken.mock.calls[0][0].token).toBe("new year");
+  });
+
+  test("clicking an unknown English tile does not fire onSelectToken", async () => {
+    const user = userEvent.setup();
+    const onSelectToken = vi.fn();
+    render(
+      <SearchContent
+        result={englishBreakdown}
+        onSelectToken={onSelectToken}
+      />,
+    );
+    await user.click(screen.getByText("absent").closest(".wblock")!);
+    expect(onSelectToken).not.toHaveBeenCalled();
   });
 });
 

@@ -113,7 +113,7 @@ describe("search — Burmese path (segment + eager exact forward-lookup)", () =>
 });
 
 describe("search — Latin (English) path", () => {
-  test("Latin input produces a 'reverse' result with the lookup module's top-N", () => {
+  test("single-word Latin input produces a 'reverse' result with the lookup module's top-N", () => {
     const result = search(engine, "speak");
     expect(result.kind).toBe("reverse");
     if (result.kind !== "reverse") throw new Error("unreachable");
@@ -124,13 +124,74 @@ describe("search — Latin (English) path", () => {
     expect(ids).toContain(2);
   });
 
-  test("Latin input respects the lookup module's result cap (≤10)", () => {
+  test("single-word Latin input respects the lookup module's result cap (≤10)", () => {
     const result = search(engine, "water");
     expect(result.kind).toBe("reverse");
     if (result.kind !== "reverse") throw new Error("unreachable");
     expect(result.rows.length).toBeLessThanOrEqual(
       engine.dictionary.config.resultLimit,
     );
+  });
+
+  test("multi-word Latin input produces an English 'breakdown' (sentence mode)", () => {
+    const result = search(engine, "happy new year");
+    expect(result.kind).toBe("breakdown");
+    if (result.kind !== "breakdown") throw new Error("unreachable");
+    expect(result.script).toBe("english");
+    expect(result.mixedInput).toBe(false);
+    // "new year" is a known multi-word gloss in the fixture, so the
+    // sentence collapses into ["happy", "new year"] — proof that the
+    // segmenter groups the known phrase rather than emitting three
+    // separate single-word tiles.
+    expect(result.tokens.map((t) => t.token)).toEqual(["happy", "new year"]);
+    // Each tile carries its exact-gloss forward lookup.
+    expect(result.tokens[0].result?.entry.entryId).toBe(5);
+    expect(result.tokens[1].result?.entry.entryId).toBe(4);
+  });
+
+  test("English breakdown preserves original casing in tile tokens", () => {
+    const result = search(engine, "Happy New Year");
+    if (result.kind !== "breakdown") throw new Error("expected breakdown");
+    expect(result.tokens.map((t) => t.token)).toEqual(["Happy", "New Year"]);
+  });
+
+  test("English sentence with an unknown word produces a null-result tile for the miss", () => {
+    const result = search(engine, "happy absent");
+    if (result.kind !== "breakdown") throw new Error("expected breakdown");
+    expect(result.script).toBe("english");
+    expect(result.tokens.map((t) => t.token)).toEqual(["happy", "absent"]);
+    expect(result.tokens[0].result).not.toBeNull();
+    expect(result.tokens[1].result).toBeNull();
+  });
+
+  test("a multi-word input that resolves to a single segment renders as 'reverse', not a one-tile breakdown", () => {
+    // "new year" is a known multi-word gloss in the fixture. The
+    // segmenter collapses it to one segment, which is logically a
+    // single query — the orchestrator must surface it as the ranked
+    // reverse-lookup view rather than a one-tile breakdown.
+    const result = search(engine, "new year");
+    expect(result.kind).toBe("reverse");
+    if (result.kind !== "reverse") throw new Error("unreachable");
+    // The reverse lookup resolves the same entry (entryId 4 owns
+    // gloss "new year" in the fixture).
+    const ids = result.rows.flatMap((r) => r.entries.map((e) => e.entryId));
+    expect(ids).toContain(4);
+  });
+
+  test("view stabilizes — half-typed multi-atom input is breakdown, full single-phrase input falls back to reverse", () => {
+    // Simulates the user typing "new year" character by character.
+    // While the input is two unmatched atoms ("new" alone has no exact
+    // gloss in the fixture) we expect breakdown mode; once the full
+    // phrase resolves to a single segment, the orchestrator falls back
+    // to the ranked reverse-lookup so the view doesn't get stuck on a
+    // one-tile breakdown.
+    const mid = search(engine, "new ye");
+    expect(mid.kind).toBe("breakdown");
+    if (mid.kind !== "breakdown") throw new Error("unreachable");
+    expect(mid.tokens.length).toBe(2);
+
+    const done = search(engine, "new year");
+    expect(done.kind).toBe("reverse");
   });
 });
 
@@ -225,6 +286,13 @@ describe("script detection drives routing", () => {
   test.each([
     ["မြန်မာ", "burmese", "breakdown"],
     ["speak", "latin", "reverse"],
+    // "new year" is a known multi-word gloss in the fixture; the
+    // segmenter collapses it to one segment, which the orchestrator
+    // surfaces as a single-query reverse-lookup, not a one-tile
+    // breakdown.
+    ["new year", "latin", "reverse"],
+    // Multi-segment English remains breakdown.
+    ["happy absent", "latin", "breakdown"],
     ["မြန်မာ test", "mixed", "breakdown"],
     ["12345", "unknown", "unrecognized"],
   ])("%s → script=%s → result.kind=%s", (input, script, kind) => {
