@@ -371,14 +371,16 @@ segmenter port consumes these field names directly.
 `version.json` looks like:
 
 ```json
-{"version": "20260515T030000Z", "scheme": "utc-timestamp/v1"}
+{"version": "1778946752", "scheme": "unix-timestamp/v1"}
 ```
 
-The `version` string is a UTC build timestamp in
-`YYYYMMDDTHHMMSSZ` form (sortable, opaque to the service worker — the
-service worker compares it for equality only, not semantic ordering). The
-`scheme` field is the format identifier so future changes are
-distinguishable. Asset size: tens of bytes.
+The `version` string is a UTC build moment serialized as an integer
+Unix timestamp in seconds. Sortable, opaque to consumers (the frontend
+sync script bakes it into the fingerprinted SQLite filename for
+cache-busting — see `app/lib/lookup/scripts/sync-assets.mjs`), and
+short enough to embed in a URL without ceremony. The `scheme` field
+is the format identifier so future changes are distinguishable. Asset
+size: tens of bytes.
 
 ## Pipeline order
 

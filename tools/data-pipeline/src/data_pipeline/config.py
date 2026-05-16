@@ -109,11 +109,12 @@ FUZZY_THRESHOLD_MY: int = 1  # syllable-level edit distance over headwords
 
 # --- Version stamp (spec §3.3 / §5.2) ---------------------------------------
 
-# Scheme: ``YYYYMMDDTHHMMSSZ`` — UTC build timestamp, sortable, no external
-# inputs needed. The service worker compares the string for equality to
-# detect stale caches (it does not need to parse it). Documented in
-# README.md.
-VERSION_STAMP_FORMAT: str = "%Y%m%dT%H%M%SZ"
+# Scheme: integer Unix timestamp in seconds (UTC). Sortable, opaque to
+# every consumer (the runtime compares for equality, the deploy bakes it
+# into the fingerprinted SQLite filename), and trivially short — picking
+# seconds rather than millis keeps the URL component compact. Documented
+# in tools/data-pipeline/README.md.
+VERSION_SCHEME: str = "unix-timestamp/v1"
 
 # --- N-gram payload (spec §4.2.3) -------------------------------------------
 

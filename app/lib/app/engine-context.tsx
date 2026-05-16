@@ -11,14 +11,21 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { load, type SearchEngine } from "@/app/lib/search";
+import { DICTIONARY_SQLITE_URL } from "@/app/lib/lookup/dataAssets.generated";
 
 /** Default URLs for the shipped data assets — the production fetch path.
  *  Pre-built engines bypass these entirely. The WASM URL points to the
  *  copy of `sql.js`'s `sql-wasm.wasm` synced into `public/` by
  *  `npm run sync:sqljs-wasm` — without an explicit URL sql.js falls
- *  back to a self-resolved path that does not work under Next.js. */
+ *  back to a self-resolved path that does not work under Next.js.
+ *
+ *  The SQLite URL is **fingerprinted** with the data-pipeline's build
+ *  stamp (see `dataAssets.generated.ts`). That's the cache-busting
+ *  mechanism: a new build moves the version stamp, the URL moves with
+ *  it, returning browsers ignore whatever they had cached for the old
+ *  URL. Long-immutable HTTP cache on the fingerprinted URL is safe and
+ *  optimal — the bytes never change for a given URL. */
 const DEFAULT_NGRAM_URL = "/data/ngram.json";
-const DEFAULT_SQLITE_URL = "/data/dictionary.sqlite";
 const DEFAULT_BKTREE_EN_URL = "/data/bktree-en.json";
 const DEFAULT_BKTREE_MY_URL = "/data/bktree-my.json";
 const DEFAULT_WASM_URL = "/sql-wasm.wasm";
@@ -60,7 +67,7 @@ function EngineLoader({ children }: { children: ReactNode }) {
       ngramUrl: DEFAULT_NGRAM_URL,
       dictionarySources: {
         kind: "urls",
-        sqlite: DEFAULT_SQLITE_URL,
+        sqlite: DICTIONARY_SQLITE_URL,
         bktreeEn: DEFAULT_BKTREE_EN_URL,
         bktreeMy: DEFAULT_BKTREE_MY_URL,
         wasmUrl: DEFAULT_WASM_URL,

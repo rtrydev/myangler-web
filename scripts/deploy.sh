@@ -74,8 +74,12 @@ if [[ ! -d "$OUT_DIR" ]]; then
 fi
 
 echo "→ syncing $OUT_DIR to s3://$BUCKET"
-# Long-cache fingerprinted assets; short-cache HTML / JSON / manifest
-# (so deploys propagate without waiting for the CloudFront TTL).
+# Long-cache fingerprinted assets; short-cache the entry points whose
+# URL is fixed across deploys (HTML, JSON, manifest). `dictionary.sqlite`
+# is fingerprinted into the filename itself by
+# `app/lib/lookup/scripts/sync-assets.mjs`, so it falls into the
+# long-immutable bucket below — its URL changes whenever the dictionary
+# changes, which is what busts the cache for returning users.
 aws s3 sync "$OUT_DIR" "s3://$BUCKET" \
   --delete \
   --exclude "*.html" \
