@@ -32,7 +32,7 @@ export function SettingsView({
       <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-start gap-3 shrink-0">
         <div>
           <div className="eyebrow eyebrow-gold mb-1.5">Settings</div>
-          <h2 className="serif text-[28px] leading-tight text-ink tracking-tight">
+          <h2 className="serif text-[28px] leading-tight text-ink tracking-tight -ml-[3px]">
             Preferences
           </h2>
           <div className="mm text-sm text-gold mt-1.5 leading-snug">ဆက်တင်</div>

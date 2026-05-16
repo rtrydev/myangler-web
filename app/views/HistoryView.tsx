@@ -42,7 +42,7 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
       <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-center gap-3 shrink-0">
         <div>
           <div className="eyebrow eyebrow-gold mb-1.5">Recent</div>
-          <h2 className="serif text-[28px] leading-tight text-ink tracking-tight">
+          <h2 className="serif text-[28px] leading-tight text-ink tracking-tight -ml-[3px]">
             History
           </h2>
           <div className="mm text-sm text-gold mt-1.5 leading-snug">သမိုင်း</div>
@@ -87,7 +87,7 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
                   <button
                     type="button"
                     onClick={() => onSelect?.(item)}
-                    className="w-full flex justify-between items-start px-5 py-3 gap-3 text-left hover:bg-surface cursor-pointer"
+                    className="w-full flex justify-between items-start px-5.5 py-3 gap-3 text-left hover:bg-surface cursor-pointer"
                     data-testid={`history-item-${i}`}
                   >
                     <div className="flex-1 min-w-0">
