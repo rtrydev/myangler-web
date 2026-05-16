@@ -139,6 +139,19 @@ function AppShellReady({
     return relatedFor(engine.dictionary, selected);
   }, [engine, selected]);
 
+  // Single setter for the search query. Clearing the field (via the X
+  // button or by deleting all characters) must also drop the selected
+  // entry so the desktop detail rail / mobile sheet return to the
+  // empty placeholder — otherwise a stale entry stays visible with no
+  // query to anchor it to.
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    if (value === "") {
+      setSelected(null);
+      setModalOpen(false);
+    }
+  }
+
   function recordQuery(q: string) {
     const trimmed = q.trim();
     if (!trimmed) return;
@@ -243,7 +256,11 @@ function AppShellReady({
           data-testid="desktop-sidebar"
         >
           <div className="px-5 pb-4">
-            <Wordmark scale={1.05} />
+            {/* `href="/"` is a real anchor, not a `<Link>` — we want a
+                full navigation so every piece of in-memory state
+                (query, selected entry, open sheets) is dropped and
+                the app remounts on a fresh URL. */}
+            <Wordmark scale={1.05} href="/" />
           </div>
           <nav className="flex flex-col" aria-label="Primary">
             {TAB_ITEMS.map(it => {
@@ -319,7 +336,7 @@ function AppShellReady({
         <main className="flex flex-col min-w-0 h-full">
           {/* Mobile header */}
           <div className="lg:hidden flex items-center justify-between px-4 py-2.5">
-            <Wordmark />
+            <Wordmark href="/" />
             <Button
               variant="ghost"
               onClick={() => setSettingsOpen(true)}
@@ -339,8 +356,8 @@ function AppShellReady({
                     aria-label="Search"
                     placeholder="ရှာဖွေရန် · search a word or sentence"
                     value={query}
-                    onChange={e => setQuery(e.target.value)}
-                    onClear={() => setQuery("")}
+                    onChange={e => handleQueryChange(e.target.value)}
+                    onClear={() => handleQueryChange("")}
                     autoFocus
                   />
                 </div>
