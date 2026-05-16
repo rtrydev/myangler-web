@@ -73,6 +73,32 @@ const FIXTURE: FixtureEntry[] = [
   // entry for ``"to do"``.
   { entryId: 40, headword: "အရှုပ်အရှင်း", pos: "n", glosses: ["to-do"] },
   { entryId: 41, headword: "လုပ်", pos: "verb", glosses: ["to do"] },
+  // Article-noise entries. In real data the Burmese term
+  // ပထမအင်္ဂလိပ်အက္ခရာ ("first English alphabet letter") owns the
+  // single-word gloss "a", and similar fragmentary entries own bare
+  // "an" / "the". The fixture reproduces that shape so the segmenter's
+  // article-suppression + article-absorption paths can both be
+  // exercised against the real bug: typing "a fish" used to surface
+  // entry 50 as the "a" tile's preview.
+  { entryId: 50, headword: "ပထမအင်္ဂလိပ်အက္ခရာ", pos: "n", glosses: ["a"] },
+  { entryId: 51, headword: "ပထမအင်္ဂလိပ်အက္ခရာအကြီး", pos: "n", glosses: ["the"] },
+  // Multi-word gloss starting with an article: must still group
+  // through the longest-match path before article absorption runs, so
+  // a real "a <X>" gloss isn't pre-empted by the absorption rule.
+  { entryId: 52, headword: "အများကြီး", pos: "noun", glosses: ["a lot"] },
+  // Pronoun + other content-bearing function-word entries. The
+  // user-stated invariant is that words like "I" / "in" / "no" DO have
+  // meaning and must surface even as single-atom tiles. These fixture
+  // entries make the assertion testable — a regression that mistakenly
+  // added them to the article-suppression set would turn these tile
+  // results to null. ("you" reuses the existing entry 8, the POS-gate
+  // test entry — same word, no need to duplicate.)
+  { entryId: 60, headword: "ငါ", pos: "pron", glosses: ["I"] },
+  { entryId: 62, headword: "အထဲမှာ", pos: "prep", glosses: ["in"] },
+  // A noun the article-absorption tests can lean on as the absorbed
+  // noun. Kept distinct from the year/water/etc. entries so the
+  // article-noun test data is self-contained.
+  { entryId: 70, headword: "ငါး", pos: "noun", glosses: ["fish"] },
 ];
 
 let model: DictionaryModel;
@@ -288,5 +314,130 @@ describe("segmentEnglish · build-time-normalization variants", () => {
     expect(segmentEnglish(model, "Brother In Law")[0].token).toBe(
       "Brother In Law",
     );
+  });
+});
+
+describe("segmentEnglish · article-noun absorption", () => {
+  test('"a fish" collapses to one segment carrying fish\'s match and reverseLookupKey', () => {
+    // The reported bug: "a" used to surface as its own tile with the
+    // alphabet-letter entry attached. The article-noun absorption rule
+    // makes it one segment spanning both atoms, with fish's forward
+    // lookup as the result AND the post-article portion exposed via
+    // `reverseLookupKey` so the orchestrator can route a 1-segment
+    // absorbed input through `lookupReverse("fish")` rather than the
+    // literal "a fish".
+    const segments = segmentEnglish(model, "a fish");
+    expect(segments).toHaveLength(1);
+    expect(segments[0].token).toBe("a fish");
+    expect(segments[0].result?.entry.entryId).toBe(70);
+    expect(segments[0].mergedWithArticle).toBe(true);
+    expect(segments[0].reverseLookupKey).toBe("fish");
+  });
+
+  test('"the cat" / "an apple" / arbitrary article+noun follows the same rule', () => {
+    // Even when the noun is not in the fixture, absorption still
+    // happens — the tile is one item with a null result, not two
+    // separate (article + noun) tiles.
+    const theCat = segmentEnglish(model, "the cat");
+    expect(theCat).toHaveLength(1);
+    expect(theCat[0].token).toBe("the cat");
+    expect(theCat[0].mergedWithArticle).toBe(true);
+
+    const anApple = segmentEnglish(model, "an apple");
+    expect(anApple).toHaveLength(1);
+    expect(anApple[0].token).toBe("an apple");
+    expect(anApple[0].mergedWithArticle).toBe(true);
+  });
+
+  test("an article inside a sentence absorbs only the immediately following noun phrase", () => {
+    // "I see a fish" → ["I", "see", "a fish"]. The "I" tile carries
+    // the pronoun match (entry 60); "see" is not in the fixture so its
+    // tile has a null result; "a fish" is absorbed.
+    const segments = segmentEnglish(model, "I see a fish");
+    expect(segments.map((s) => s.token)).toEqual(["I", "see", "a fish"]);
+    expect(segments[0].result?.entry.entryId).toBe(60);
+    expect(segments[0].mergedWithArticle).toBeUndefined();
+    expect(segments[1].result).toBeNull();
+    expect(segments[2].result?.entry.entryId).toBe(70);
+    expect(segments[2].mergedWithArticle).toBe(true);
+  });
+
+  test("absorption pulls in the longest post-article phrase, not just the next atom", () => {
+    // "a happy new year" → one tile spanning all four atoms, carrying
+    // the "happy new year" entry's match. Without the multi-atom probe
+    // after the article, we would only absorb "a happy" and leave
+    // "new year" dangling as a separate tile.
+    const segments = segmentEnglish(model, "a happy new year");
+    expect(segments).toHaveLength(1);
+    expect(segments[0].token).toBe("a happy new year");
+    expect(segments[0].result?.entry.entryId).toBe(4);
+    expect(segments[0].mergedWithArticle).toBe(true);
+    // reverseLookupKey holds the entire post-article phrase so the
+    // orchestrator's ranked-view route lands on the right query.
+    expect(segments[0].reverseLookupKey).toBe("happy new year");
+  });
+
+  test('a real "a <X>" gloss is matched as a phrase, NOT routed through absorption', () => {
+    // "a lot" is a known phrase in the fixture (entry 52). The
+    // longest-match path runs before the absorption path, so the
+    // resulting segment must NOT be flagged `mergedWithArticle` — the
+    // tile is a normal phrase match. Without that ordering, the
+    // article-strip path would re-route the orchestrator to a reverse-
+    // lookup of "lot" alone, dropping the real "a lot" entry.
+    const segments = segmentEnglish(model, "a lot");
+    expect(segments).toHaveLength(1);
+    expect(segments[0].token).toBe("a lot");
+    expect(segments[0].result?.entry.entryId).toBe(52);
+    expect(segments[0].mergedWithArticle).toBeUndefined();
+    expect(segments[0].reverseLookupKey).toBeUndefined();
+  });
+
+  test("a trailing bare article in a sentence is suppressed, not absorbed", () => {
+    // No following atom to absorb, so the article path doesn't apply
+    // and the default single-atom path emits the article as its own
+    // tile. `lookupAtomRun` suppresses the alphabet-letter entry, so
+    // the tile carries a null result rather than the noise hit.
+    const segments = segmentEnglish(model, "fish a");
+    expect(segments.map((s) => s.token)).toEqual(["fish", "a"]);
+    expect(segments[0].result?.entry.entryId).toBe(70);
+    expect(segments[1].result).toBeNull();
+    expect(segments[1].mergedWithArticle).toBeUndefined();
+  });
+});
+
+describe("segmentEnglish · content-word function words keep their meaning", () => {
+  // Pronouns, prepositions, etc. were briefly over-suppressed in an
+  // earlier version of the fix. The user's invariant is that any word
+  // with separable meaning must surface as its own tile — these tests
+  // pin that down across the categories most likely to drift.
+
+  test('"I" surfaces with the pronoun entry as a single-atom tile', () => {
+    const segments = segmentEnglish(model, "I see fish");
+    const iTile = segments.find((s) => s.token === "I");
+    expect(iTile).toBeDefined();
+    expect(iTile?.result?.entry.entryId).toBe(60);
+  });
+
+  test('"you" is not filtered when typed in a sentence', () => {
+    const segments = segmentEnglish(model, "you fish");
+    const youTile = segments.find((s) => s.token === "you");
+    expect(youTile?.result?.entry.entryId).toBe(8);
+  });
+
+  test('"in" (preposition) is not filtered when typed in a sentence', () => {
+    const segments = segmentEnglish(model, "in water");
+    const inTile = segments.find((s) => s.token === "in");
+    expect(inTile?.result?.entry.entryId).toBe(62);
+  });
+});
+
+describe("segmentEnglish · lookupEnglishForward is unchanged", () => {
+  // The forward-lookup primitive is shared with `lookupReverse`'s
+  // gloss_groups fallback path. The segmenter's article rules must NOT
+  // leak into it — explicit "what entries own the gloss 'a'?" calls
+  // still see entry 50 even though the segmenter would hide it.
+  test("direct lookup still resolves bare article keys", () => {
+    expect(lookupEnglishForward(model, "a")?.entry.entryId).toBe(50);
+    expect(lookupEnglishForward(model, "the")?.entry.entryId).toBe(51);
   });
 });

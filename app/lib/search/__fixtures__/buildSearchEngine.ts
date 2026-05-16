@@ -35,6 +35,10 @@ export const SEARCH_FIXTURE: FixtureEntry[] = [
   // Single-word gloss so a mixed-segment sentence like "happy new
   // year" produces a known leading tile alongside the phrase group.
   { entryId: 5, headword: "ပျော်", pos: "adj", glosses: ["happy"] },
+  // The article-absorption orchestrator test ("a fish" routes through
+  // breakdown, not reverse-lookup) needs a noun the segmenter can
+  // attach to the article.
+  { entryId: 6, headword: "ငါး", pos: "noun", glosses: ["fish"] },
 ];
 
 /** Construct a ready-to-query orchestrator engine using the shared

@@ -224,17 +224,27 @@ function burmesePath(
  *
  *    - **1 segment** — a single logical query, whether the input was
  *      one word ("water"), a known multi-word phrase ("thank you"),
- *      or a "to <verb>" infinitive that collapses to its stripped
- *      head ("to protect" → "protect"). Render as the ranked
- *      reverse-lookup so the user sees every Burmese entry that owns
- *      the gloss, not a one-tile breakdown. Passing the *original*
- *      input to `lookupReverse` lets the lookup module's own
- *      `normalizeGloss` (lowercase, collapse-ws, strip leading
- *      ``"to "``) reshape the query into the canonical key.
+ *      a "to <verb>" infinitive that collapses to its stripped head
+ *      ("to protect" → "protect"), or an article-absorbed "a <noun>"
+ *      that collapses to one tile carrying the noun's match
+ *      ("a fish"). Render as the ranked reverse-lookup so the user
+ *      sees every Burmese entry that owns the gloss, not a one-tile
+ *      breakdown. Passing the *original* input to `lookupReverse`
+ *      lets the lookup module's own `normalizeGloss` (lowercase,
+ *      collapse-ws, strip leading ``"to "``) reshape the query into
+ *      the canonical key — *except* for an article-absorbed segment,
+ *      where we route the segment's `reverseLookupKey` (the post-
+ *      article portion, "fish" for "a fish") because `normalizeGloss`
+ *      does not strip leading articles and the literal "a fish" key
+ *      finds nothing in `gloss_groups`.
  *
  *    - **≥ 2 segments** — genuine sentence structure (parse-it-into-
  *      tiles UX). Render the breakdown with one tappable tile per
- *      segment.
+ *      segment. Article-absorbed segments inside a sentence (e.g. the
+ *      third tile of "I see a fish") render in the breakdown via the
+ *      forward-lookup result the segmenter already attached — only the
+ *      *whole-input collapses to one absorbed segment* case takes the
+ *      reverseLookupKey re-route above.
  *
  *  Driving the choice off `segments.length` instead of an input-
  *  surface heuristic also stabilizes the view across keystrokes: a
@@ -252,9 +262,14 @@ function burmesePath(
 function latinPath(engine: SearchEngine, input: string): SearchResult {
   const segments = segmentEnglish(engine.dictionary, input);
   if (segments.length <= 1) {
+    const segment = segments[0];
+    const query =
+      segment?.mergedWithArticle && segment.reverseLookupKey
+        ? segment.reverseLookupKey
+        : input;
     return {
       kind: "reverse",
-      rows: lookupReverse(engine.dictionary, input),
+      rows: lookupReverse(engine.dictionary, query),
     };
   }
   return {

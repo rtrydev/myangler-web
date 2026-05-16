@@ -10,6 +10,47 @@
 // still tap a tile to drill into the full ranked entry list via the
 // detail panel.
 //
+// Article policy. Articles ("a", "an", "the") are the only English
+// closed-class words with no separable meaning in a sentence — every
+// other function word (pronouns "I" / "you", prepositions "in" / "on",
+// copulas "is" / "are", conjunctions "and" / "or", demonstratives,
+// negations) carries real lexical content and has at least one Burmese
+// entry that legitimately glosses it. Articles are different: the only
+// `gloss_groups` rows with the keys "a" / "an" / "the" are noise hits
+// to alphabet-letter entries (ပထမအင်္ဂလိပ်အက္ခရာ "first English
+// alphabet letter" owns the gloss "A") or fragmentary unit-of-measure
+// entries — the user typing "a fish" never meant the noun sense of the
+// letter "a".
+//
+// Two things follow from that policy:
+//
+//   1. **Single-atom suppression.** When the only thing left to look up
+//      is a bare article, return no match — letting the alphabet-letter
+//      entry surface as the tile preview is pure noise. (Note: this is
+//      ONLY for the bare-article fallback. Multi-word phrases that
+//      happen to contain an article — "a lot", "thank you", "in love"
+//      — still group through the full-key path because the longest-
+//      match attempt always runs before the single-atom fallback.)
+//
+//   2. **Article-noun absorption.** "a fish" / "the cat" / "an apple"
+//      collapse into a single tile spanning the article + the post-
+//      article phrase. The user typed two atoms but meant one concept;
+//      the article is just grammatical scaffolding. The segment carries
+//      both the absorbed forward-lookup (so the tile renders with a
+//      preview when the breakdown view is active, e.g. "I see a fish"
+//      → three tiles where the third is the absorbed "a fish") AND a
+//      `reverseLookupKey` holding just the post-article portion — when
+//      the entire input collapses to a single absorbed segment the
+//      orchestrator routes that key (NOT the literal "a fish") through
+//      reverse-lookup, so the user sees the same ranked single-word
+//      view they would have seen typing just "fish".
+//
+// Function words that DO carry meaning are never filtered or absorbed:
+// "I see a fish" yields three tiles — "I" (pronoun match), "see" (verb
+// match), "a fish" (absorbed, fish's match). The contrast with articles
+// is the whole point: articles get the special treatment exactly
+// because they alone have no standalone meaning.
+//
 // Algorithm:
 //
 //   1. Tokenize the input into ASCII word *atoms* (the same regex the
@@ -63,6 +104,22 @@ import type { ForwardResult } from "./types";
  *  per-position lookup bounded for very long inputs. */
 const MAX_PHRASE_LEN = 5;
 
+/** English articles. The only closed-class words handled specially by
+ *  the segmenter — see the file-level comment for the rationale. Kept
+ *  tiny on purpose: every other "function word" candidate (pronouns,
+ *  prepositions, conjunctions, copulas, demonstratives, negations) has
+ *  at least one Burmese entry that legitimately glosses it, so blocking
+ *  any of them would suppress real matches the user expects to see
+ *  ("I", "is", "in", "no" all have meaningful entries).
+ *
+ *  The build pipeline's `ENGLISH_STOPWORDS` set is intentionally broader
+ *  because it serves a different goal — keeping the `postings` inverted
+ *  index from being flooded by closed-class words that appear in
+ *  thousands of long glosses. That's a per-token relevance concern, not
+ *  a "does this word have meaning?" question, so the two lists are
+ *  allowed to differ. */
+const ARTICLES: ReadonlySet<string> = new Set(["a", "an", "the"]);
+
 /** One segment emitted by `segmentEnglish`. Same display shape the
  *  Burmese `BreakdownToken` uses — the orchestrator stores these
  *  directly into `BreakdownResult.tokens`. */
@@ -71,6 +128,20 @@ export interface EnglishSegment {
   token: string;
   /** Exact-gloss-match forward lookup, or `null` on miss. */
   result: ForwardResult | null;
+  /** True when this segment spans an article-noun run absorbed into one
+   *  tile (e.g. "a fish" → one tile carrying fish's match). Always
+   *  undefined (rather than `false`) on segments produced by the normal
+   *  multi-word or single-atom paths, so the flag's presence is a strict
+   *  signal. Paired with `reverseLookupKey`. */
+  mergedWithArticle?: boolean;
+  /** For article-absorbed segments only: the post-article portion of
+   *  the input in its original casing ("a fish" → "fish",
+   *  "the happy new year" → "happy new year"). When an absorbed segment
+   *  is the entire input the orchestrator routes this key through
+   *  `lookupReverse` instead of the literal absorbed string so the user
+   *  sees the same ranked single-word view they would have seen typing
+   *  just the noun. Undefined on non-absorbed segments. */
+  reverseLookupKey?: string;
 }
 
 interface Atom {
@@ -117,13 +188,23 @@ function isVerbPos(pos: string): boolean {
 /** Look up a candidate atom run, trying every normalized-key shape the
  *  build pipeline could have stored. The first non-null variant wins;
  *  the ``"to "`` strip variant is gated by POS so non-infinitive runs
- *  don't collapse spuriously. */
+ *  don't collapse spuriously.
+ *
+ *  Single-atom runs whose normalized form is a bare article
+ *  short-circuit to null — see the file-level comment. The check fires
+ *  before variant 1 because all three variants (plain, ``"to "``-strip,
+ *  hyphen-join) on a 1-atom run reduce to the same spurious gloss-groups
+ *  hit, and variants 2/3 don't apply to length-1 runs anyway. */
 function lookupAtomRun(
   model: DictionaryModel,
   atoms: readonly Atom[],
 ): ForwardResult | null {
   if (atoms.length === 0) return null;
   const lowers = atoms.map((a) => a.normalized);
+
+  if (atoms.length === 1 && ARTICLES.has(lowers[0])) {
+    return null;
+  }
 
   // 1. Plain space-joined — canonical key for most glosses.
   const spaceKey = lowers.join(" ");
@@ -177,12 +258,34 @@ function lookupAtomRun(
   return null;
 }
 
+/** Find the longest multi-atom phrase starting at `start` (length ≥ 2)
+ *  that resolves through `lookupAtomRun`, capped at `MAX_PHRASE_LEN`.
+ *  Returns the match plus the consumed length, or `null` when no
+ *  multi-word run at this position resolves. */
+function longestPhraseAt(
+  model: DictionaryModel,
+  atoms: readonly Atom[],
+  start: number,
+): { result: ForwardResult; length: number } | null {
+  const maxLen = Math.min(MAX_PHRASE_LEN, atoms.length - start);
+  for (let len = maxLen; len >= 2; len--) {
+    const slice = atoms.slice(start, start + len);
+    const hit = lookupAtomRun(model, slice);
+    if (hit) return { result: hit, length: len };
+  }
+  return null;
+}
+
 /** Segment an English input into display tiles. Greedy longest-match
- *  against the dictionary's known gloss phrases; single-atom fallback
- *  with exact-gloss lookup when no multi-word run hits.
+ *  against the dictionary's known gloss phrases; article-noun
+ *  absorption when a bare article would otherwise produce a noise tile;
+ *  single-atom fallback with exact-gloss lookup elsewhere.
  *
  *  Pure function of `(model, input)`. Cheap enough to run on every
- *  keystroke — at most O(atoms · MAX_PHRASE_LEN) indexed lookups. */
+ *  keystroke — at most O(atoms · MAX_PHRASE_LEN) indexed lookups.
+ *  Article absorption doubles that bound in the worst case (one extra
+ *  longest-phrase scan rooted at the post-article position), still
+ *  linear in `atoms`. */
 export function segmentEnglish(
   model: DictionaryModel,
   input: string,
@@ -193,34 +296,70 @@ export function segmentEnglish(
   const out: EnglishSegment[] = [];
   let i = 0;
   while (i < atoms.length) {
-    const maxLen = Math.min(MAX_PHRASE_LEN, atoms.length - i);
-    let matchedLen = 0;
-    let matchedResult: ForwardResult | null = null;
-    // Try longest phrases first; first multi-word hit wins.
-    for (let len = maxLen; len >= 2; len--) {
-      const slice = atoms.slice(i, i + len);
-      const hit = lookupAtomRun(model, slice);
-      if (hit) {
-        matchedLen = len;
-        matchedResult = hit;
-        break;
-      }
-    }
-    if (matchedResult !== null && matchedLen >= 2) {
-      const slice = atoms.slice(i, i + matchedLen);
+    // Path 1: longest known phrase starting at i. Tried first so that a
+    // phrase whose first atom is an article ("a lot", "the same") still
+    // groups through its canonical key instead of falling into article
+    // absorption.
+    const phrase = longestPhraseAt(model, atoms, i);
+    if (phrase) {
+      const slice = atoms.slice(i, i + phrase.length);
       out.push({
         token: slice.map((a) => a.text).join(" "),
-        result: matchedResult,
+        result: phrase.result,
       });
-      i += matchedLen;
-    } else {
-      const atom = atoms[i];
-      out.push({
-        token: atom.text,
-        result: lookupAtomRun(model, [atom]),
-      });
-      i += 1;
+      i += phrase.length;
+      continue;
     }
+
+    const atomI = atoms[i];
+
+    // Path 2: article-noun absorption. When the head atom is a bare
+    // article and there is at least one more atom to absorb, emit ONE
+    // tile spanning the article plus the longest post-article phrase
+    // (or the single post-article atom). The tile carries the
+    // post-article lookup as its result — the article itself is just
+    // grammatical scaffolding, so what the user wants to see is the
+    // noun's match.
+    //
+    // The fallback to a single post-article atom always runs; we never
+    // leave a bare article as its own tile unless it's the trailing
+    // atom of the input. That keeps "a fish" / "the cat" / "an apple"
+    // looking like one concept in the breakdown UI even when the noun
+    // is a dictionary miss ("a fis" → one tile "a fis" with null
+    // result), instead of splitting into an article tile plus a noun
+    // tile.
+    if (ARTICLES.has(atomI.normalized) && i + 1 < atoms.length) {
+      const tail = longestPhraseAt(model, atoms, i + 1);
+      let consumed: number;
+      let result: ForwardResult | null;
+      if (tail) {
+        consumed = 1 + tail.length;
+        result = tail.result;
+      } else {
+        consumed = 2;
+        result = lookupAtomRun(model, [atoms[i + 1]]);
+      }
+      const slice = atoms.slice(i, i + consumed);
+      const tailSlice = atoms.slice(i + 1, i + consumed);
+      out.push({
+        token: slice.map((a) => a.text).join(" "),
+        result,
+        mergedWithArticle: true,
+        reverseLookupKey: tailSlice.map((a) => a.text).join(" "),
+      });
+      i += consumed;
+      continue;
+    }
+
+    // Path 3: default single-atom tile. `lookupAtomRun` self-suppresses
+    // a trailing bare article here so a sentence ending with one (e.g.
+    // "fish a") renders the article tile with a null result rather
+    // than the alphabet-letter noise hit.
+    out.push({
+      token: atomI.text,
+      result: lookupAtomRun(model, [atomI]),
+    });
+    i += 1;
   }
   return out;
 }

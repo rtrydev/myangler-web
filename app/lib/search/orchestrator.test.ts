@@ -193,6 +193,36 @@ describe("search — Latin (English) path", () => {
     const done = search(engine, "new year");
     expect(done.kind).toBe("reverse");
   });
+
+  test('"a fish" routes to reverse-lookup with the article stripped', () => {
+    // The segmenter collapses "a fish" into a single article-absorbed
+    // segment with `reverseLookupKey: "fish"`. The orchestrator picks
+    // up that key and routes through `lookupReverse(model, "fish")` —
+    // not the literal "a fish" — so the user sees the same ranked
+    // single-word view they would have seen typing just "fish".
+    const result = search(engine, "a fish");
+    expect(result.kind).toBe("reverse");
+    if (result.kind !== "reverse") throw new Error("unreachable");
+    const ids = result.rows.flatMap((r) => r.entries.map((e) => e.entryId));
+    expect(ids).toContain(6);
+  });
+
+  test('"a fish" surfaces the same ranked rows as "fish" alone', () => {
+    // The user-facing invariant: typing "a fish" should not behave
+    // differently from typing "fish". Compare the two row lists to
+    // make that drift visible if the article-stripping path ever
+    // regresses.
+    const articled = search(engine, "a fish");
+    const bare = search(engine, "fish");
+    if (articled.kind !== "reverse" || bare.kind !== "reverse") {
+      throw new Error("both queries must route to reverse view");
+    }
+    const idsArticled = articled.rows.flatMap((r) =>
+      r.entries.map((e) => e.entryId),
+    );
+    const idsBare = bare.rows.flatMap((r) => r.entries.map((e) => e.entryId));
+    expect(idsArticled).toEqual(idsBare);
+  });
 });
 
 describe("singleWordSearch", () => {
