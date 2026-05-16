@@ -33,7 +33,7 @@ import {
   search as runSearch,
   type SearchEngine,
 } from "@/app/lib/search";
-import { lookupForward } from "@/app/lib/lookup";
+import { lookupForward, relatedFor } from "@/app/lib/lookup";
 import type { Entry } from "@/app/lib/lookup";
 import { useEngineState } from "@/app/lib/app/engine-context";
 import { useFavorites, useHistory } from "@/app/lib/app/storage";
@@ -129,11 +129,14 @@ function AppShellReady({
 
   const result = useMemo(() => runSearch(engine, query), [engine, query]);
 
+  // Anchor Forms to the *selected* entry, not whatever sense
+  // `lookupForward(headword)` happens to pick first. On polysemous
+  // headwords (e.g. ကြိုက် verb "to like" vs conj "while") the two
+  // senses' Forms must derive from their own glosses, otherwise one
+  // sense's panel fills with peers gathered for the other sense.
   const related = useMemo<Entry[]>(() => {
     if (!selected) return [];
-    const found = lookupForward(engine.dictionary, selected.headword);
-    if (!found) return [];
-    return found.mergedPeers.filter(e => e.entryId !== selected.entryId);
+    return relatedFor(engine.dictionary, selected);
   }, [engine, selected]);
 
   function recordQuery(q: string) {

@@ -9,6 +9,7 @@ import {
   lookupForward,
   lookupForwardWithCompoundFallback,
   lookupForwardWithFuzzy,
+  relatedFor,
 } from "./forward";
 import { lookupReverse } from "./reverse";
 import { searchBurmese } from "./burmeseSearch";
@@ -81,6 +82,82 @@ describe("lookupForward", () => {
   test("does not surface peers for an entry with no merging", () => {
     const r = lookupForward(model, "မြန်မာ");
     expect(r!.mergedPeers).toEqual([]);
+  });
+});
+
+describe("relatedFor — homograph anchoring", () => {
+  // Regression: a polysemous headword (two raw entries sharing spelling
+  // but with unrelated senses) used to leak one sense's gloss-mates into
+  // the other sense's "Forms" section. Production case: ကြိုက် has a
+  // verb sense ("to like") and a conjunction sense ("while"); the
+  // verb's detail panel filled with every particle glossed "while"
+  // because `lookupForward(headword)` anchored peers to whichever raw
+  // entry SQLite returned first (the conj), regardless of which sense
+  // the user had selected.
+  //
+  // The fix anchors peers to a caller-supplied `Entry` so each sense's
+  // Forms section derives from *its own* normalized glosses.
+  const HOMOGRAPH_FIXTURE: FixtureEntry[] = [
+    // Two same-headword homographs with disjoint senses. The "while"
+    // sense's entry_id is intentionally lower so it would win
+    // `direct[0]` in `entriesByHeadword` ordering — the exact failure
+    // mode from the production bug.
+    { entryId: 0, headword: "α", pos: "conj", glosses: ["while"] },
+    { entryId: 1, headword: "α", pos: "verb", glosses: ["to like"] },
+    // Foreign particles whose primary gloss is "while" — they must
+    // attach to the conj sense, never to the verb sense.
+    { entryId: 2, headword: "β", pos: "particle", glosses: ["while"] },
+    { entryId: 3, headword: "γ", pos: "particle", glosses: ["while"] },
+    // A verb sharing "like" with the verb sense.
+    { entryId: 4, headword: "δ", pos: "verb", glosses: ["like"] },
+  ];
+
+  let m: DictionaryModel;
+  beforeAll(async () => {
+    m = await buildFixtureModel(HOMOGRAPH_FIXTURE);
+  });
+
+  test("anchors peers to the supplied entry, not direct[0]", () => {
+    const verb = m.db.entriesByIds([1])[0];
+    const peers = relatedFor(m, verb).map((e) => e.entryId).sort();
+    // Verb sense surfaces the conj homograph (same headword) and the
+    // "like"-glossed peer. The "while"-glossed particles must NOT
+    // appear — they share a gloss with the conj sense, not the verb.
+    expect(peers).toContain(0); // conj homograph (same headword)
+    expect(peers).toContain(4); // "like" peer
+    expect(peers).not.toContain(2);
+    expect(peers).not.toContain(3);
+  });
+
+  test("each sense of a homograph gets its own peers", () => {
+    const conj = m.db.entriesByIds([0])[0];
+    const conjPeers = relatedFor(m, conj).map((e) => e.entryId).sort();
+    // Conj sense surfaces both "while" particles and the verb homograph;
+    // the verb's "like" peer must NOT appear.
+    expect(conjPeers).toContain(1);
+    expect(conjPeers).toContain(2);
+    expect(conjPeers).toContain(3);
+    expect(conjPeers).not.toContain(4);
+  });
+
+  test("never includes the anchor entry itself", () => {
+    const verb = m.db.entriesByIds([1])[0];
+    const peers = relatedFor(m, verb);
+    expect(peers.every((e) => e.entryId !== 1)).toBe(true);
+  });
+
+  test("lookupForward continues to anchor to direct[0] (back-compat)", () => {
+    // Public API contract unchanged: forward lookup by headword still
+    // picks the first row as primary and computes peers against it.
+    const r = lookupForward(m, "α");
+    expect(r!.entry.entryId).toBe(0);
+    const peerIds = r!.mergedPeers.map((e) => e.entryId).sort();
+    // Primary is the conj — its peers include the verb homograph and
+    // the "while" particles, NOT the "like" peer.
+    expect(peerIds).toContain(1);
+    expect(peerIds).toContain(2);
+    expect(peerIds).toContain(3);
+    expect(peerIds).not.toContain(4);
   });
 });
 

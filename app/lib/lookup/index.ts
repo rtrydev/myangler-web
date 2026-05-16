@@ -15,6 +15,7 @@ export {
   lookupForward,
   lookupForwardWithCompoundFallback,
   lookupForwardWithFuzzy,
+  relatedFor,
 } from "./forward";
 export { lookupReverse } from "./reverse";
 export { searchBurmese } from "./burmeseSearch";

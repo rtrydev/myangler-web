@@ -10,6 +10,81 @@ import { segmentSyllables } from "@/app/lib/segmenter";
 import type { Entry, ForwardResult, ResultRow } from "./types";
 import { Tier } from "./types";
 
+/** Compute the "Forms" peer list anchored to a *specific* entry: every
+ *  same-headword homograph plus every other entry sharing one of that
+ *  entry's top-K normalized glosses (bidirectional `maxGlossPosition`
+ *  gate). The anchor entry itself is excluded.
+ *
+ *  Anchoring to an explicit entry — instead of "the first row for this
+ *  headword" — is what keeps Forms correct on polysemous headwords. A
+ *  headword like ကြိုက် carries two unrelated senses (verb "to like";
+ *  conjunction "while"); each sense's Forms must be derived from *its
+ *  own* glosses, otherwise the verb's panel lists every particle glossed
+ *  "while" and the conjunction's panel lists every verb glossed "like".
+ */
+export function relatedFor(
+  model: DictionaryModel,
+  entry: Entry,
+): Entry[] {
+  const homographs = model.db
+    .entriesByHeadword(entry.headword)
+    .filter((e) => e.entryId !== entry.entryId);
+  const peers: Entry[] = [...homographs];
+  const seen = new Set<number>([entry.entryId, ...homographs.map((e) => e.entryId)]);
+
+  const maxPos = model.config.maxGlossPosition;
+  // Spec §2.4.3 — peers sharing an identical normalized gloss are
+  // surfaced together. Only consider the anchor's *top-K* glosses so a
+  // tangential gloss far down the list cannot generate spurious peers.
+  const anchorTopGlosses = entry.normalizedGlosses.slice(0, maxPos);
+  const candidateIds = new Set<number>();
+  // norm → (position-in-anchor, [candidate entry IDs])
+  const candidatesByGloss: Array<{ norm: string; anchorPos: number; ids: number[] }> = [];
+  anchorTopGlosses.forEach((norm, anchorPos) => {
+    if (!norm) return;
+    const ids = model.db.entryIdsForNormalizedGloss(norm);
+    if (ids.length === 0) return;
+    candidatesByGloss.push({ norm, anchorPos, ids });
+    for (const id of ids) if (!seen.has(id)) candidateIds.add(id);
+  });
+
+  if (candidateIds.size === 0) return peers;
+
+  const fetched = model.db.entriesByIds([...candidateIds]);
+  const byId = new Map<number, Entry>(fetched.map((e) => [e.entryId, e]));
+
+  // Score each peer by (anchorPos + peerPos): lower = stronger
+  // relationship. A peer that shares the anchor's first gloss as its
+  // own first gloss scores 0 and tops the list.
+  type Scored = { entry: Entry; score: number };
+  const scored: Scored[] = [];
+  const scoreById = new Map<number, number>();
+  for (const { norm, anchorPos, ids } of candidatesByGloss) {
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      const peer = byId.get(id);
+      if (!peer) continue;
+      const peerPos = peer.normalizedGlosses.indexOf(norm);
+      if (peerPos < 0 || peerPos >= maxPos) continue;
+      const thisScore = anchorPos + peerPos;
+      const prev = scoreById.get(id);
+      if (prev === undefined) {
+        scoreById.set(id, thisScore);
+        scored.push({ entry: peer, score: thisScore });
+      } else if (thisScore < prev) {
+        scoreById.set(id, thisScore);
+        const item = scored.find((s) => s.entry.entryId === id);
+        if (item) item.score = thisScore;
+      }
+    }
+  }
+  scored.sort((a, b) => a.score - b.score);
+  const cap = model.config.maxFormsPerEntry;
+  const capped = Number.isFinite(cap) ? scored.slice(0, cap) : scored;
+  for (const { entry: peer } of capped) peers.push(peer);
+  return peers;
+}
+
 /** Forward lookup by headword. Returns `null` on a miss. When the headword
  *  resolves to multiple raw entries (same headword, different POS, etc.)
  *  the first is the primary `entry` and the others — plus any peers
@@ -23,6 +98,13 @@ import { Tier } from "./types";
  *  drags in every Burmese entry that happens to mention any of those
  *  words anywhere in their gloss list — even at position 20 — and the
  *  "Forms" section on the detail panel becomes unreadable.
+ *
+ *  Callers that already know which specific entry they want peers for
+ *  (e.g. the detail view's "Forms" section, which has a user-selected
+ *  entry in hand) should use {@link relatedFor} directly: this function
+ *  anchors peers to whichever row SQLite returns first for `headword`,
+ *  which can be a different sense than the caller intends on polysemous
+ *  headwords.
  */
 export function lookupForward(
   model: DictionaryModel,
@@ -30,72 +112,8 @@ export function lookupForward(
 ): ForwardResult | null {
   const direct = model.db.entriesByHeadword(headword);
   if (direct.length === 0) return null;
-
   const primary = direct[0];
-  const peers: Entry[] = direct.slice(1);
-  const seen = new Set<number>([primary.entryId, ...peers.map((e) => e.entryId)]);
-
-  const maxPos = model.config.maxGlossPosition;
-  // Spec §2.4.3 — peers sharing an identical normalized gloss are
-  // surfaced together. Only consider the primary's *top-K* glosses so a
-  // tangential gloss far down the list cannot generate spurious peers.
-  const primaryTopGlosses = primary.normalizedGlosses.slice(0, maxPos);
-  const candidateIds = new Set<number>();
-  // norm → (position-in-primary, [candidate entry IDs])
-  const candidatesByGloss: Array<{ norm: string; primaryPos: number; ids: number[] }> = [];
-  primaryTopGlosses.forEach((norm, primaryPos) => {
-    if (!norm) return;
-    const ids = model.db.entryIdsForNormalizedGloss(norm);
-    if (ids.length === 0) return;
-    candidatesByGloss.push({ norm, primaryPos, ids });
-    for (const id of ids) if (!seen.has(id)) candidateIds.add(id);
-  });
-
-  if (candidateIds.size > 0) {
-    const fetched = model.db.entriesByIds([...candidateIds]);
-    const byId = new Map<number, Entry>(fetched.map((e) => [e.entryId, e]));
-
-    // Score each peer by (primaryPos + peerPos): lower = stronger
-    // relationship. A peer that shares the primary's first gloss as
-    // its own first gloss scores 0 and tops the list; a peer where the
-    // shared gloss is at position 2 on both sides scores 4.
-    type Scored = { entry: Entry; score: number };
-    const scored: Scored[] = [];
-    const scoreById = new Map<number, number>();
-    for (const { norm, primaryPos, ids } of candidatesByGloss) {
-      for (const id of ids) {
-        if (seen.has(id)) continue;
-        const entry = byId.get(id);
-        if (!entry) continue;
-        const peerPos = entry.normalizedGlosses.indexOf(norm);
-        if (peerPos < 0 || peerPos >= maxPos) continue;
-        const thisScore = primaryPos + peerPos;
-        const prev = scoreById.get(id);
-        if (prev === undefined) {
-          scoreById.set(id, thisScore);
-          scored.push({ entry, score: thisScore });
-        } else if (thisScore < prev) {
-          // A stronger overlap on a different shared gloss — keep the
-          // better score. (The dedupe across glosses still works because
-          // we only push to `scored` on first sight.)
-          scoreById.set(id, thisScore);
-          const item = scored.find((s) => s.entry.entryId === id);
-          if (item) item.score = thisScore;
-        }
-      }
-    }
-    // Stable sort by score; on ties preserve insertion order so output
-    // remains deterministic.
-    scored.sort((a, b) => a.score - b.score);
-    const cap = model.config.maxFormsPerEntry;
-    const capped = Number.isFinite(cap) ? scored.slice(0, cap) : scored;
-    for (const { entry } of capped) {
-      seen.add(entry.entryId);
-      peers.push(entry);
-    }
-  }
-
-  return { entry: primary, mergedPeers: peers };
+  return { entry: primary, mergedPeers: relatedFor(model, primary) };
 }
 
 /** Forward lookup with a compound-fallback. Tries an exact match first;
