@@ -34,7 +34,7 @@ export function FavoritesView({ items, onSelect }: FavoritesViewProps) {
       className="flex-1 flex flex-col overflow-hidden paper-tex"
       data-testid="favorites-view"
     >
-      <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-start gap-3 shrink-0">
+      <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-center gap-3 shrink-0">
         <div>
           <div className="eyebrow eyebrow-gold mb-1.5">Library</div>
           <h2 className="serif text-[28px] leading-tight text-ink tracking-tight">
@@ -42,7 +42,10 @@ export function FavoritesView({ items, onSelect }: FavoritesViewProps) {
           </h2>
           <div className="mm text-sm text-gold mt-1.5 leading-snug">သိမ်းဆည်းထားသော</div>
         </div>
-        <span className="ui text-[11px] text-ink-3 mt-1">
+        {/* Matches the History tab's Clear button anchor: `items-center`
+            on the row + `p-2 leading-none` here puts the count in the
+            same vertical position the Clear button occupies on History. */}
+        <span className="ui text-xs text-ink-3 p-2 leading-none">
           {items.length} {items.length === 1 ? "word" : "words"}
         </span>
       </div>

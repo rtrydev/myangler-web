@@ -39,7 +39,7 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
       className="flex-1 flex flex-col overflow-hidden paper-tex"
       data-testid="history-view"
     >
-      <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-start gap-3 shrink-0">
+      <div className="px-5.5 pt-5 pb-3.5 flex justify-between items-center gap-3 shrink-0">
         <div>
           <div className="eyebrow eyebrow-gold mb-1.5">Recent</div>
           <h2 className="serif text-[28px] leading-tight text-ink tracking-tight">
@@ -51,7 +51,10 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
           <Button
             variant="ghost"
             onClick={onClear}
-            className="p-2! text-xs!"
+            // `leading-none` collapses the inherited 1.5 line-height that
+            // would otherwise leave "Clear" floating below the icon's
+            // optical center inside the flex row.
+            className="p-2! text-xs! leading-none"
             aria-label="Clear history"
           >
             <TrashIcon size={14} /> Clear
