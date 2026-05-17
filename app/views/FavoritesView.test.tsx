@@ -72,6 +72,23 @@ describe("FavoritesView", () => {
     expect(onSelect).toHaveBeenCalledWith(items[0]);
   });
 
+  test("the remove button fires onRemove without selecting the item", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <FavoritesView items={items} onSelect={onSelect} onRemove={onRemove} />,
+    );
+    await user.click(screen.getByTestId("favorite-remove-1"));
+    expect(onRemove).toHaveBeenCalledWith(items[1]);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test("the remove button is omitted when onRemove is not provided", () => {
+    render(<FavoritesView items={items} />);
+    expect(screen.queryByTestId("favorite-remove-0")).not.toBeInTheDocument();
+  });
+
   test("empty state shows the 'nothing saved' nudge", () => {
     render(<FavoritesView items={[]} />);
     expect(screen.getByTestId("favorites-empty")).toBeInTheDocument();

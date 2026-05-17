@@ -5,17 +5,19 @@
 // save something.
 
 import { useMemo, useState } from "react";
+import { Button } from "@/app/components/Button";
 import { Chip } from "@/app/components/Chip";
-import { StarFillIcon } from "@/app/components/Icon";
+import { TrashIcon } from "@/app/components/Icon";
 import { Eyebrow, RuleGold } from "@/app/components/Ornament";
 import type { FavoriteItem } from "@/app/lib/app/types";
 
 type FavoritesViewProps = {
   items: readonly FavoriteItem[];
   onSelect?: (item: FavoriteItem) => void;
+  onRemove?: (item: FavoriteItem) => void;
 };
 
-export function FavoritesView({ items, onSelect }: FavoritesViewProps) {
+export function FavoritesView({ items, onSelect, onRemove }: FavoritesViewProps) {
   const tags = useMemo(() => {
     const set = new Set<string>();
     for (const i of items) if (i.tag) set.add(i.tag);
@@ -99,13 +101,13 @@ export function FavoritesView({ items, onSelect }: FavoritesViewProps) {
                 key={item.entryId}
                 className="border-b border-border last:border-b-0"
               >
-                <button
-                  type="button"
-                  onClick={() => onSelect?.(item)}
-                  className="w-full flex justify-between items-start px-5.5 py-3.5 gap-3 text-left hover:bg-surface cursor-pointer"
-                  data-testid={`favorite-item-${i}`}
-                >
-                  <div className="flex-1 min-w-0">
+                <div className="flex items-stretch hover:bg-surface">
+                  <button
+                    type="button"
+                    onClick={() => onSelect?.(item)}
+                    className="flex-1 min-w-0 pl-5.5 pr-3 py-3.5 text-left cursor-pointer"
+                    data-testid={`favorite-item-${i}`}
+                  >
                     <div className="mm text-xl text-ink leading-tight">
                       {item.headword}
                     </div>
@@ -124,11 +126,21 @@ export function FavoritesView({ items, onSelect }: FavoritesViewProps) {
                         </Chip>
                       </div>
                     )}
-                  </div>
-                  <div className="text-gold">
-                    <StarFillIcon size={18} />
-                  </div>
-                </button>
+                  </button>
+                  {onRemove && (
+                    <div className="flex items-center pr-5.5">
+                      <Button
+                        variant="ghost"
+                        onClick={() => onRemove(item)}
+                        aria-label={`Remove ${item.headword} from saved`}
+                        data-testid={`favorite-remove-${i}`}
+                        className="p-2! leading-none hover:text-ruby!"
+                      >
+                        <TrashIcon size={15} />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

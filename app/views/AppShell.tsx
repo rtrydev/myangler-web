@@ -233,6 +233,11 @@ function AppShellReady({
     setToast("History cleared");
   }
 
+  function handleFavoriteRemove(item: FavoriteItem) {
+    favorites.remove(item.entryId);
+    setToast("Removed from saved");
+  }
+
   function shareUrlFor(q: string): string {
     const params = new URLSearchParams();
     params.set("q", q);
@@ -413,6 +418,7 @@ function AppShellReady({
               <FavoritesView
                 items={favorites.items}
                 onSelect={handleFavoriteSelect}
+                onRemove={handleFavoriteRemove}
               />
             )}
             {tab === "settings" && (
