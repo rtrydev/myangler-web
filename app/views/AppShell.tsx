@@ -205,7 +205,9 @@ function AppShellReady({
 
   function handleSaveToggle() {
     if (!selected) return;
+    const wasSaved = favorites.isSaved(selected.entryId);
     favorites.toggle(entryToFavorite(selected));
+    setToast(wasSaved ? "Removed from saved" : "Saved");
   }
 
   function handleCopy() {
@@ -213,6 +215,22 @@ function AppShellReady({
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(selected.headword);
     }
+    setToast("Copied");
+  }
+
+  function handleDarkChange(next: boolean) {
+    setDark(next);
+    setToast(next ? "Dark mode on" : "Light mode on");
+  }
+
+  function handleAccentChange(next: typeof accent) {
+    setAccent(next);
+    setToast(`Accent: ${next[0].toUpperCase()}${next.slice(1)}`);
+  }
+
+  function handleHistoryClear() {
+    history.clear();
+    setToast("History cleared");
   }
 
   function shareUrlFor(q: string): string {
@@ -388,7 +406,7 @@ function AppShellReady({
               <HistoryView
                 items={history.items}
                 onSelect={handleHistorySelect}
-                onClear={() => history.clear()}
+                onClear={handleHistoryClear}
               />
             )}
             {tab === "fav" && (
@@ -404,9 +422,9 @@ function AppShellReady({
                     rendering uses the Sheet wrapper below instead. */}
                 <SettingsView
                   accent={accent}
-                  onAccentChange={setAccent}
+                  onAccentChange={handleAccentChange}
                   dark={dark}
-                  onDarkChange={setDark}
+                  onDarkChange={handleDarkChange}
                 />
               </div>
             )}
@@ -481,9 +499,9 @@ function AppShellReady({
         >
           <SettingsView
             accent={accent}
-            onAccentChange={setAccent}
+            onAccentChange={handleAccentChange}
             dark={dark}
-            onDarkChange={setDark}
+            onDarkChange={handleDarkChange}
             onClose={() => setSettingsOpen(false)}
           />
         </Sheet>

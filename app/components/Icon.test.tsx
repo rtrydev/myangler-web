@@ -18,6 +18,7 @@ import {
   SunIcon,
   MoonIcon,
   SettingsIcon,
+  CheckIcon,
 } from "./Icon";
 
 const icons = [
@@ -38,6 +39,7 @@ const icons = [
   ["SunIcon", SunIcon],
   ["MoonIcon", MoonIcon],
   ["SettingsIcon", SettingsIcon],
+  ["CheckIcon", CheckIcon],
 ] as const;
 
 describe("Icon set", () => {

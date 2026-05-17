@@ -27,6 +27,7 @@ import {
   BookIcon,
   TrashIcon,
   SettingsIcon,
+  CheckIcon,
 } from "../components/Icon";
 
 const SAMPLE_ENTRY: Entry = {
@@ -386,6 +387,7 @@ export default function Page() {
                 { Icon: TrashIcon, name: "trash" },
                 { Icon: OfflineIcon, name: "offline" },
                 { Icon: SettingsIcon, name: "settings" },
+                { Icon: CheckIcon, name: "check" },
               ].map(({ Icon, name }) => (
                 <div key={name} className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 rounded-md border border-border bg-surface flex items-center justify-center">

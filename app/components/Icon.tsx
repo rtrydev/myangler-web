@@ -119,6 +119,12 @@ export const MoonIcon = (p: IconProps) => (
   </svg>
 );
 
+export const CheckIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M5 12.5l4.5 4.5L19 7" />
+  </svg>
+);
+
 export const SettingsIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <circle cx="12" cy="12" r="3" />
