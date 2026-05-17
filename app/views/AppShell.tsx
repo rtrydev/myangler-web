@@ -210,12 +210,8 @@ function AppShellReady({
 
   function handleCopy() {
     if (!selected) return;
-    const glosses = selected.glosses.join("; ");
-    const text = glosses
-      ? `${selected.headword} — ${glosses}`
-      : selected.headword;
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(text);
+      void navigator.clipboard.writeText(selected.headword);
     }
   }
 
