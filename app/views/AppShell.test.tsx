@@ -10,6 +10,16 @@ import { clearAllStorage, FAVORITES_KEY } from "@/app/lib/app/storage";
 import type { FavoriteItem, HistoryItem } from "@/app/lib/app/types";
 import { AppShell } from "./AppShell";
 
+// `Settings` shows up twice in the DOM at jsdom-render time: once in
+// the mobile TabBar (the new entry that replaced the hamburger) and
+// once in the desktop sidebar's `mt-auto` group. The TabBar lives at
+// the bottom of <main>, the sidebar entry lives in the aside above —
+// so `getAllByRole` returns desktop first, mobile second.
+function getMobileSettingsTab() {
+  const all = screen.getAllByRole("button", { name: /^settings$/i });
+  return all[all.length - 1];
+}
+
 beforeEach(() => {
   clearAllStorage();
   // Reset URL between tests — `replaceState` from a prior test would
@@ -26,8 +36,8 @@ describe("AppShell · ready state", () => {
 
   test("does not expose theme/accent controls directly in the header", async () => {
     await renderWithEngine(<AppShell />);
-    // The theme toggle lives inside the Settings sheet now — not in the
-    // header chrome. With the sheet closed, it should be absent entirely.
+    // Theme/accent controls live inside the Settings tab — they should
+    // never be present in the top chrome itself.
     expect(
       screen.queryByRole("button", { name: /toggle theme/i }),
     ).not.toBeInTheDocument();
@@ -35,23 +45,31 @@ describe("AppShell · ready state", () => {
       screen.queryByRole("button", { name: /accent ruby/i }),
     ).not.toBeInTheDocument();
   });
+
+  test("the mobile header has the decorative ornament and no hamburger button", async () => {
+    await renderWithEngine(<AppShell />);
+    // Settings now lives on the bottom TabBar; the old hamburger is
+    // replaced by a purely decorative manuscript ornament.
+    expect(
+      screen.queryByRole("button", { name: /open settings/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("header-ornament")).toBeInTheDocument();
+  });
 });
 
-describe("AppShell · mobile settings sheet", () => {
-  test("the mobile hamburger opens a Settings dialog with the theme & accent controls", async () => {
+describe("AppShell · mobile settings tab", () => {
+  test("the mobile bottom-bar Settings tab shows the theme & accent controls inline (no dialog)", async () => {
     const user = userEvent.setup();
     await renderWithEngine(<AppShell />);
 
-    // Only one "Open settings" button exists — the mobile hamburger. The
-    // desktop sidebar's Settings entry uses its visible text as the
-    // accessible name ("Settings"), not "Open settings".
-    const hamburger = screen.getByRole("button", { name: /open settings/i });
-    await user.click(hamburger);
+    await user.click(getMobileSettingsTab());
 
-    expect(
-      await screen.findByRole("dialog", { name: /settings/i }),
-    ).toBeInTheDocument();
+    // Inline view — not wrapped in a dialog the way the old hamburger
+    // sheet used to be.
     expect(screen.getByTestId("settings-view")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: /settings/i }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /toggle theme/i }),
     ).toBeInTheDocument();
@@ -60,41 +78,26 @@ describe("AppShell · mobile settings sheet", () => {
     ).toBeInTheDocument();
   });
 
-  test("toggling the theme inside the mobile sheet applies the dark class to <html>", async () => {
+  test("toggling the theme from the mobile Settings tab applies the dark class to <html>", async () => {
     const user = userEvent.setup();
     await renderWithEngine(<AppShell />);
-    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    await user.click(getMobileSettingsTab());
     expect(document.documentElement.classList.contains("dark")).toBe(false);
     await user.click(screen.getByRole("button", { name: /toggle theme/i }));
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     document.documentElement.classList.remove("dark");
   });
 
-  test("the in-sheet Close button dismisses the dialog", async () => {
+  test("Settings (as a tab) has no Close button — users dismiss it by selecting another tab", async () => {
     const user = userEvent.setup();
     await renderWithEngine(<AppShell />);
-    await user.click(screen.getByRole("button", { name: /open settings/i }));
-    await user.click(screen.getByRole("button", { name: /^close$/i }));
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("dialog", { name: /settings/i }),
-      ).not.toBeInTheDocument(),
-    );
-  });
-
-  test("Escape closes the mobile settings sheet", async () => {
-    const user = userEvent.setup();
-    await renderWithEngine(<AppShell />);
-    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    await user.click(getMobileSettingsTab());
+    expect(screen.getByTestId("settings-view")).toBeInTheDocument();
+    // The old transient Sheet exposed an X with aria-label "Close".
+    // A tab destination shouldn't.
     expect(
-      await screen.findByRole("dialog", { name: /settings/i }),
-    ).toBeInTheDocument();
-    await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("dialog", { name: /settings/i }),
-      ).not.toBeInTheDocument(),
-    );
+      screen.queryByRole("button", { name: /^close$/i }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -172,21 +175,24 @@ describe("AppShell · accent application", () => {
   test("choosing an accent writes data-accent on <html> (so it sits with .dark)", async () => {
     const user = userEvent.setup();
     await renderWithEngine(<AppShell />);
-    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    await user.click(getMobileSettingsTab());
     await user.click(screen.getByRole("button", { name: /accent jade/i }));
     expect(document.documentElement.dataset.accent).toBe("jade");
     expect(document.body.dataset.accent).toBeUndefined();
   });
 
-  test("accent persists across open/close cycles of the mobile sheet", async () => {
+  test("accent persists across leaving and returning to the Settings tab", async () => {
     const user = userEvent.setup();
     await renderWithEngine(<AppShell />);
 
-    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    await user.click(getMobileSettingsTab());
     await user.click(screen.getByRole("button", { name: /accent jade/i }));
-    await user.click(screen.getByRole("button", { name: /^close$/i }));
 
-    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    // Leave settings (back to Look up) and come back.
+    const lookupBtns = screen.getAllByRole("button", { name: /look up/i });
+    await user.click(lookupBtns[lookupBtns.length - 1]);
+    await user.click(getMobileSettingsTab());
+
     expect(
       screen.getByRole("button", { name: /accent jade/i }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -204,7 +210,7 @@ describe("AppShell · preferences persistence (the reload story)", () => {
     // through plain `render` to keep the persisted prefs intact.
     const first = await renderWithEngine(<AppShell />);
     const engine = first.engine;
-    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    await user.click(getMobileSettingsTab());
     await user.click(screen.getByRole("button", { name: /toggle theme/i }));
     await user.click(screen.getByRole("button", { name: /accent jade/i }));
     expect(document.documentElement.classList.contains("dark")).toBe(true);
@@ -223,7 +229,7 @@ describe("AppShell · preferences persistence (the reload story)", () => {
         <AppShell />
       </EngineProvider>,
     );
-    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    await user.click(getMobileSettingsTab());
     expect(
       screen.getByRole("button", { name: /accent jade/i }),
     ).toHaveAttribute("aria-pressed", "true");

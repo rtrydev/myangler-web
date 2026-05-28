@@ -17,10 +17,9 @@ import { Button } from "@/app/components/Button";
 import { EntryDetail } from "@/app/components/EntryDetail";
 import { Sheet } from "@/app/components/Sheet";
 import { Toast } from "@/app/components/Toast";
-import { Eyebrow } from "@/app/components/Ornament";
+import { Eyebrow, Flourish } from "@/app/components/Ornament";
 import {
   ClockIcon,
-  MenuIcon,
   OfflineIcon,
   SearchIcon,
   SettingsIcon,
@@ -49,14 +48,20 @@ import { FavoritesView } from "./FavoritesView";
 
 type Tab = "search" | "history" | "fav" | "settings";
 
-// Tabs surfaced in the mobile bottom bar. Settings is NOT in here —
-// on mobile it opens as a `Sheet` from the hamburger button; on
-// desktop it lives in the sidebar `mt-auto` group instead of the
-// primary nav, since it's a system setting rather than a content tab.
+// Primary content tabs — also rendered in the desktop sidebar. On
+// desktop, Settings stays in the `mt-auto` group beneath these (it's a
+// system control, not a content tab); on mobile it joins the bottom
+// `TabBar` via `MOBILE_TAB_ITEMS` so the user always has it at thumb's
+// reach without a hamburger menu.
 const TAB_ITEMS: TabItem[] = [
   { id: "search", label: "Look up", icon: ({ size }) => <SearchIcon size={size} /> },
   { id: "history", label: "History", icon: ({ size }) => <ClockIcon size={size} /> },
   { id: "fav", label: "Saved", icon: ({ size }) => <StarIcon size={size} /> },
+];
+
+const MOBILE_TAB_ITEMS: TabItem[] = [
+  ...TAB_ITEMS,
+  { id: "settings", label: "Settings", icon: ({ size }) => <SettingsIcon size={size} /> },
 ];
 
 type AppShellProps = {
@@ -88,7 +93,6 @@ function AppShellReady({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Entry | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const history = useHistory();
   const favorites = useFavorites();
@@ -353,17 +357,15 @@ function AppShellReady({
 
         {/* Main column */}
         <main className="flex flex-col min-w-0 h-full">
-          {/* Mobile header */}
+          {/* Mobile header — Settings now lives on the bottom TabBar, so
+              the right side is a decorative flourish: twin curling
+              tendrils flanking a small four-pointed bloom, echoing the
+              floral scrollwork of Burmese illuminated manuscripts. */}
           <div className="lg:hidden flex items-center justify-between px-4 py-2.5">
             <Wordmark href="/" />
-            <Button
-              variant="ghost"
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Open settings"
-              className="p-2!"
-            >
-              <MenuIcon size={20} />
-            </Button>
+            <div className="pr-0.5" data-testid="header-ornament">
+              <Flourish />
+            </div>
           </div>
 
           {/* Search input — only on the search tab */}
@@ -423,9 +425,9 @@ function AppShellReady({
             )}
             {tab === "settings" && (
               <div className="flex-1 overflow-y-auto no-scroll paper-tex">
-                {/* Inline desktop settings — no `onClose` (this is the
-                    current "tab", not a transient sheet). The mobile
-                    rendering uses the Sheet wrapper below instead. */}
+                {/* Settings is a tab on every breakpoint now — no
+                    `onClose` because it's a destination, not a transient
+                    sheet. Users dismiss it by selecting another tab. */}
                 <SettingsView
                   accent={accent}
                   onAccentChange={handleAccentChange}
@@ -461,7 +463,7 @@ function AppShellReady({
           {/* Mobile tab bar */}
           <div className="lg:hidden">
             <TabBar
-              items={TAB_ITEMS}
+              items={MOBILE_TAB_ITEMS}
               active={tab}
               onChange={id => {
                 setTab(id as Tab);
@@ -491,26 +493,6 @@ function AppShellReady({
             <DetailRailPlaceholder />
           )}
         </aside>
-      </div>
-
-      {/* Mobile-only settings sheet — opened by the hamburger button.
-          On desktop, settings lives inline in the main content area
-          (rendered above when `tab === "settings"`), so the Sheet is
-          suppressed via `lg:hidden`. */}
-      <div className="lg:hidden">
-        <Sheet
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          label="Settings"
-        >
-          <SettingsView
-            accent={accent}
-            onAccentChange={handleAccentChange}
-            dark={dark}
-            onDarkChange={handleDarkChange}
-            onClose={() => setSettingsOpen(false)}
-          />
-        </Sheet>
       </div>
 
       <Toast open={toast !== null} message={toast ?? ""} />

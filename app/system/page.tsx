@@ -10,7 +10,7 @@ import { WordBlock } from "../components/WordBlock";
 import { ResultRow } from "../components/ResultRow";
 import { Card, Note } from "../components/Card";
 import { Toast } from "../components/Toast";
-import { Eyebrow, RuleGold, Ornament } from "../components/Ornament";
+import { Eyebrow, RuleGold, Ornament, Flourish } from "../components/Ornament";
 import { TabBar } from "../components/TabBar";
 import { ThemeToggle, AccentSwitcher, type Accent } from "../components/ThemeToggle";
 import { EntryDetail } from "../components/EntryDetail";
@@ -445,7 +445,7 @@ export default function Page() {
         {/* ─── Status / ornaments ─── */}
         <section>
           <Eyebrow withRule>Ornaments &amp; status</Eyebrow>
-          <div className="mt-6 grid md:grid-cols-3 gap-4">
+          <div className="mt-6 grid md:grid-cols-2 gap-4">
             <Card className="p-6 flex flex-col items-center gap-3">
               <Ornament />
               <div className="serif text-sm text-ink-3 italic">Filigree ornament</div>
@@ -455,7 +455,13 @@ export default function Page() {
               <div className="serif text-sm text-ink-3 italic">Gold rule</div>
               <RuleGold />
             </Card>
-            <Card className="p-6 flex flex-col items-center justify-center gap-2 min-h-30">
+            <Card className="p-6 flex flex-col items-center justify-center gap-3 min-h-30 md:col-span-2">
+              <Flourish width={120} />
+              <div className="serif text-sm text-ink-3 italic">
+                Manuscript flourish — used in the mobile header
+              </div>
+            </Card>
+            <Card className="p-6 flex flex-col items-center justify-center gap-2 min-h-30 md:col-span-2">
               <div className="flex items-center gap-2 text-jade">
                 <OfflineIcon size={14} />
                 <span className="ui text-[11px] tracking-wider text-jade">Ready offline · 38,412 entries</span>
