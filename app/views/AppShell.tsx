@@ -20,6 +20,7 @@ import { Toast } from "@/app/components/Toast";
 import { Eyebrow, Flourish } from "@/app/components/Ornament";
 import {
   ClockIcon,
+  DownloadIcon,
   OfflineIcon,
   SearchIcon,
   SettingsIcon,
@@ -27,6 +28,7 @@ import {
   StarIcon,
 } from "@/app/components/Icon";
 import { SettingsView } from "./SettingsView";
+import { InstallGuide } from "@/app/components/InstallGuide";
 import {
   detectScript,
   search as runSearch,
@@ -37,6 +39,7 @@ import type { Entry } from "@/app/lib/lookup";
 import { useEngineState } from "@/app/lib/app/engine-context";
 import { useFavorites, useHistory } from "@/app/lib/app/storage";
 import { usePreferences } from "@/app/lib/app/preferences";
+import { useInstallPrompt } from "@/app/lib/app/install-prompt";
 import {
   entryToFavorite,
   type FavoriteItem,
@@ -94,8 +97,10 @@ function AppShellReady({
   const [selected, setSelected] = useState<Entry | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [installOpen, setInstallOpen] = useState(false);
   const history = useHistory();
   const favorites = useFavorites();
+  const install = useInstallPrompt();
 
   // Seed the query from `?q=` on first mount. Initial useState stays
   // empty so SSR-rendered HTML matches the first client render — no
@@ -357,15 +362,28 @@ function AppShellReady({
 
         {/* Main column */}
         <main className="flex flex-col min-w-0 h-full">
-          {/* Mobile header — Settings now lives on the bottom TabBar, so
-              the right side is a decorative flourish: twin curling
-              tendrils flanking a small four-pointed bloom, echoing the
-              floral scrollwork of Burmese illuminated manuscripts. */}
+          {/* Mobile header — Settings lives on the bottom TabBar, so the
+              right side is the install entry point on uninstalled mobile,
+              and a decorative manuscript flourish everywhere else (the
+              installed PWA, where the affordance would be confusing). */}
           <div className="lg:hidden flex items-center justify-between px-4 py-2.5">
             <Wordmark href="/" />
-            <div className="pr-0.5" data-testid="header-ornament">
-              <Flourish />
-            </div>
+            {install.available ? (
+              <button
+                type="button"
+                onClick={() => setInstallOpen(true)}
+                aria-label="Add to Home Screen"
+                data-testid="header-install"
+                className="flex items-center gap-1.5 px-2 py-1.5 -mr-1 text-gold hover:text-gold-soft transition-colors cursor-pointer"
+              >
+                <DownloadIcon size={14} />
+                <span className="eyebrow eyebrow-gold">Install</span>
+              </button>
+            ) : (
+              <div className="pr-0.5" data-testid="header-ornament">
+                <Flourish />
+              </div>
+            )}
           </div>
 
           {/* Search input — only on the search tab */}
@@ -458,6 +476,16 @@ function AppShellReady({
                 )}
               </Sheet>
             </div>
+
+            {/* Install-to-Home-Screen guide. Auto-opens on first mobile
+                (non-standalone) visit; mounted here so it shares the
+                relatively-positioned overlay container with the entry
+                sheet above. */}
+            <InstallGuide
+              open={installOpen}
+              onClose={() => setInstallOpen(false)}
+              platform={install.platform}
+            />
           </div>
 
           {/* Mobile tab bar */}

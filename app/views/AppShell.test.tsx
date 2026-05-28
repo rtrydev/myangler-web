@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EngineProvider } from "@/app/lib/app/engine-context";
@@ -9,6 +9,38 @@ import {
 import { clearAllStorage, FAVORITES_KEY } from "@/app/lib/app/storage";
 import type { FavoriteItem, HistoryItem } from "@/app/lib/app/types";
 import { AppShell } from "./AppShell";
+
+const IPHONE_UA =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+
+function stubUA(ua: string) {
+  Object.defineProperty(window.navigator, "userAgent", {
+    configurable: true,
+    get: () => ua,
+  });
+}
+
+function stubMatchMedia(matcher: (q: string) => boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: matcher(query),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }),
+  });
+}
+
+function clearMatchMedia() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (window as any).matchMedia;
+}
 
 // `Settings` shows up twice in the DOM at jsdom-render time: once in
 // the mobile TabBar (the new entry that replaced the hamburger) and
@@ -526,5 +558,129 @@ describe("AppShell · shareable URL", () => {
     const url = writeText.mock.calls.at(-1)?.[0] as string;
     expect(url).toContain("?q=");
     expect(decodeURIComponent(url)).toContain("ပြော");
+  });
+});
+
+describe("AppShell · install-to-home-screen guide", () => {
+  // `Object.defineProperty(window.navigator, "userAgent", …)` persists
+  // between tests, so capture the original UA descriptor up front and
+  // restore it in afterEach — otherwise the first iPhone-UA test would
+  // leak into every subsequent test in this whole file.
+  const originalUA = Object.getOwnPropertyDescriptor(
+    Object.getPrototypeOf(window.navigator),
+    "userAgent",
+  );
+
+  afterEach(() => {
+    clearMatchMedia();
+    if (originalUA) {
+      Object.defineProperty(window.navigator, "userAgent", originalUA);
+    }
+    vi.restoreAllMocks();
+  });
+
+  async function renderShell() {
+    clearAllStorage();
+    const engine = await buildAppEngine();
+    return render(
+      <EngineProvider engine={engine}>
+        <AppShell />
+      </EngineProvider>,
+    );
+  }
+
+  test("the guide does NOT auto-open on mobile — user must tap the header button", async () => {
+    stubUA(IPHONE_UA);
+    stubMatchMedia(() => false);
+    await renderShell();
+    expect(
+      screen.queryByRole("dialog", { name: /install myangler/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("on mobile, the header shows an Install button in place of the ornament", async () => {
+    stubUA(IPHONE_UA);
+    stubMatchMedia(() => false);
+    await renderShell();
+    expect(screen.getByTestId("header-install")).toBeInTheDocument();
+    expect(screen.queryByTestId("header-ornament")).not.toBeInTheDocument();
+  });
+
+  test("tapping the header Install button opens the install guide", async () => {
+    stubUA(IPHONE_UA);
+    stubMatchMedia(() => false);
+    const user = userEvent.setup();
+    await renderShell();
+    expect(
+      screen.queryByRole("dialog", { name: /install myangler/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("header-install"));
+    expect(
+      await screen.findByRole("dialog", { name: /install myangler/i }),
+    ).toBeInTheDocument();
+  });
+
+  test("clicking outside the install guide dismisses it — even on chrome that lives outside the sheet's positioned parent", async () => {
+    stubUA(IPHONE_UA);
+    stubMatchMedia(() => false);
+    const user = userEvent.setup();
+    await renderShell();
+
+    await user.click(screen.getByTestId("header-install"));
+    await screen.findByRole("dialog", { name: /install myangler/i });
+
+    // The mobile Wordmark lives in the page header — completely outside
+    // the Sheet's relatively-positioned parent. The old scrim-button
+    // approach couldn't reach it; the document-level mousedown handler
+    // can. Click it and the guide should dismiss.
+    const wordmarks = screen.getAllByRole("link", { name: /myangler/i });
+    await user.click(wordmarks[0]);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: /install myangler/i }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  test("closing the guide hides it but leaves the header button in place for re-opening", async () => {
+    stubUA(IPHONE_UA);
+    stubMatchMedia(() => false);
+    const user = userEvent.setup();
+    await renderShell();
+
+    await user.click(screen.getByTestId("header-install"));
+    const dialog = await screen.findByRole("dialog", {
+      name: /install myangler/i,
+    });
+    await user.click(within(dialog).getByTestId("install-guide-done"));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: /install myangler/i }),
+      ).not.toBeInTheDocument(),
+    );
+
+    expect(screen.getByTestId("header-install")).toBeInTheDocument();
+    // And it works a second time.
+    await user.click(screen.getByTestId("header-install"));
+    expect(
+      await screen.findByRole("dialog", { name: /install myangler/i }),
+    ).toBeInTheDocument();
+  });
+
+  test("in the installed PWA (standalone display), the header keeps the ornament and no Install button is shown", async () => {
+    stubUA(IPHONE_UA);
+    stubMatchMedia(q => q === "(display-mode: standalone)");
+    await renderShell();
+    expect(screen.queryByTestId("header-install")).not.toBeInTheDocument();
+    expect(screen.getByTestId("header-ornament")).toBeInTheDocument();
+  });
+
+  test("on a desktop UA, the mobile header (when produced in jsdom) keeps the ornament — no Install button", async () => {
+    // jsdom default UA → `platform === "other"` → install unavailable.
+    stubMatchMedia(() => false);
+    await renderShell();
+    expect(screen.queryByTestId("header-install")).not.toBeInTheDocument();
+    expect(screen.getByTestId("header-ornament")).toBeInTheDocument();
   });
 });

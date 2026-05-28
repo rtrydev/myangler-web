@@ -15,6 +15,7 @@ import { TabBar } from "../components/TabBar";
 import { ThemeToggle, AccentSwitcher, type Accent } from "../components/ThemeToggle";
 import { EntryDetail } from "../components/EntryDetail";
 import { Sheet } from "../components/Sheet";
+import { InstallGuide } from "../components/InstallGuide";
 import {
   SearchIcon,
   ClockIcon,
@@ -80,6 +81,10 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [toastOpen, setToastOpen] = useState(false);
+  const [installOpen, setInstallOpen] = useState(false);
+  const [installPlatform, setInstallPlatform] = useState<"ios" | "android">(
+    "ios",
+  );
 
   useEffect(() => {
     document.documentElement.dataset.accent = accent;
@@ -367,6 +372,54 @@ export default function Page() {
                 Open the sheet to preview the bottom-sheet treatment.
               </div>
             )}
+          </div>
+        </section>
+
+        {/* ─── Install guide ─── */}
+        <section>
+          <Eyebrow withRule>Install guide</Eyebrow>
+          <div className="mt-6 grid md:grid-cols-2 gap-6">
+            <Card className="p-6 flex flex-col gap-4">
+              <Eyebrow gold>Add to Home Screen</Eyebrow>
+              <p className="serif italic text-ink-3 text-sm">
+                Platform-accurate walkthrough for installing the PWA on
+                iPhone (Safari) and Android (Chrome / Edge / Samsung
+                Internet). Auto-opens on first mobile visit; hidden in
+                the installed app.
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant={installPlatform === "ios" ? "primary" : "secondary"}
+                  onClick={() => {
+                    setInstallPlatform("ios");
+                    setInstallOpen(true);
+                  }}
+                >
+                  Open · iPhone
+                </Button>
+                <Button
+                  variant={installPlatform === "android" ? "primary" : "secondary"}
+                  onClick={() => {
+                    setInstallPlatform("android");
+                    setInstallOpen(true);
+                  }}
+                >
+                  Open · Android
+                </Button>
+              </div>
+            </Card>
+            <div className="relative h-120 overflow-hidden rounded-lg border border-border bg-paper">
+              <InstallGuide
+                open={installOpen}
+                onClose={() => setInstallOpen(false)}
+                platform={installPlatform}
+              />
+              {!installOpen && (
+                <div className="absolute inset-0 flex items-center justify-center serif italic text-ink-3 px-6 text-center">
+                  Pick a platform to preview the install walkthrough.
+                </div>
+              )}
+            </div>
           </div>
         </section>
 
