@@ -88,9 +88,55 @@ function EngineLoader({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, []);
+  useSplashRemoval(state.status);
   return (
     <EngineContext.Provider value={state}>{children}</EngineContext.Provider>
   );
+}
+
+/** DOM id of the pre-app splash node rendered by `app/layout.tsx`. */
+export const SPLASH_ELEMENT_ID = "myangler-splash";
+
+/** Minimum on-screen time before the splash starts fading. Returning
+ *  visitors hitting a warm HTTP cache can resolve the engine in <50 ms;
+ *  without this, the spinner pops in and out faster than the eye can
+ *  parse and reads as a glitch instead of a deliberate splash. */
+export const SPLASH_MIN_VISIBLE_MS = 150;
+
+/** Hard upper bound on the fade-out. `transitionend` is the primary
+ *  removal signal; this fires as a fallback if the event is suppressed
+ *  (e.g. tab in background, `prefers-reduced-motion`, transition
+ *  cancelled by `display:none` further up the tree). */
+export const SPLASH_FADE_SAFETY_MS = 600;
+
+/** Fades and removes the pre-app splash overlay rendered by
+ *  `app/layout.tsx` once the engine reaches a terminal status. No-op
+ *  while loading, and no-op if the splash node is already gone (the
+ *  hook can run after re-renders without double-firing). */
+export function useSplashRemoval(status: EngineState["status"]): void {
+  useEffect(() => {
+    if (status === "loading") return;
+    if (typeof document === "undefined") return;
+    const el = document.getElementById(SPLASH_ELEMENT_ID);
+    if (!el) return;
+    const shownAt = Number(el.dataset.shownAt ?? "0");
+    const elapsed = performance.now() - shownAt;
+    const delay = Math.max(0, SPLASH_MIN_VISIBLE_MS - elapsed);
+    let removed = false;
+    const remove = () => {
+      if (removed) return;
+      removed = true;
+      el.remove();
+    };
+    const startTimer = window.setTimeout(() => {
+      el.dataset.leaving = "true";
+      el.addEventListener("transitionend", remove, { once: true });
+      window.setTimeout(remove, SPLASH_FADE_SAFETY_MS);
+    }, delay);
+    return () => {
+      window.clearTimeout(startTimer);
+    };
+  }, [status]);
 }
 
 /** Consume the engine context. Throws when called outside the provider —
