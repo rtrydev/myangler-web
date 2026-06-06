@@ -120,6 +120,16 @@ export class DictionaryDB {
     ).map(rowToEntry);
   }
 
+  /** Every distinct headword in the dictionary. Used by the "word of the
+   *  day" picker to intersect the corpus-frequency table (which contains
+   *  particles, punctuation, and inflected forms that are *not* dictionary
+   *  headwords) with the words that actually own a displayable entry. */
+  distinctHeadwords(): string[] {
+    return this.all("SELECT DISTINCT headword FROM entries", []).map(
+      (r) => r.headword as string,
+    );
+  }
+
   /** Load one or more entries by ID. Returns an `Entry` for every id that
    *  matches; preserves insertion order of `ids` in the output. */
   entriesByIds(ids: readonly number[]): Entry[] {

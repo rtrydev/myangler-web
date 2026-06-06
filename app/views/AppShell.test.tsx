@@ -52,6 +52,20 @@ function getMobileSettingsTab() {
   return all[all.length - 1];
 }
 
+// Locate text inside the active results/breakdown column. The desktop
+// detail rail renders a "word of the day" chosen from the dictionary's
+// most popular headwords by the calendar day, so on a given run it can be
+// any common fixture headword (e.g. ပြော / မြန်မာ / စကား). A bare
+// `getByText` on such a headword would then match both the result row and
+// the rail; scoping to the result column keeps these assertions
+// unambiguous regardless of which word the day happens to surface.
+function inResults(text: string): HTMLElement {
+  const view =
+    screen.queryByTestId("results-view") ??
+    screen.getByTestId("breakdown-view");
+  return within(view).getByText(text);
+}
+
 beforeEach(() => {
   clearAllStorage();
   // Reset URL between tests — `replaceState` from a prior test would
@@ -295,7 +309,7 @@ describe("AppShell · search idle → results", () => {
       expect(screen.getByTestId("results-view")).toBeInTheDocument(),
     );
     // ပြော → "speak" in the fixture set
-    expect(screen.getByText("ပြော")).toBeInTheDocument();
+    expect(inResults("ပြော")).toBeInTheDocument();
   });
 
   test("typing Burmese routes through the breakdown engine and shows word blocks", async () => {
@@ -306,15 +320,15 @@ describe("AppShell · search idle → results", () => {
     await waitFor(() =>
       expect(screen.getByTestId("breakdown-view")).toBeInTheDocument(),
     );
-    expect(screen.getByText("မြန်မာ")).toBeInTheDocument();
-    expect(screen.getByText("စကား")).toBeInTheDocument();
+    expect(inResults("မြန်မာ")).toBeInTheDocument();
+    expect(inResults("စကား")).toBeInTheDocument();
   });
 
   test("clicking a sample chip seeds the query", async () => {
     const user = userEvent.setup();
     await renderWithEngine(<AppShell />);
-    // The TRY chip is a role=button; query by role so it's unambiguous
-    // against the (plain-text) "water" gloss in the word-of-the-day rail.
+    // The TRY chip is a role=button; query by role so it stays unambiguous
+    // against any plain-text gloss the word-of-the-day rail happens to show.
     await user.click(screen.getByRole("button", { name: "water" }));
     const input = screen.getByRole("textbox", { name: /search/i }) as HTMLInputElement;
     expect(input.value).toBe("water");
@@ -327,9 +341,9 @@ describe("AppShell · entry interaction & history", () => {
     await renderWithEngine(<AppShell />);
     const input = screen.getByRole("textbox", { name: /search/i });
     await user.type(input, "speak");
-    await waitFor(() => screen.getByText("ပြော"));
+    await waitFor(() => inResults("ပြော"));
 
-    await user.click(screen.getByText("ပြော"));
+    await user.click(inResults("ပြော"));
 
     const dialogs = await screen.findAllByRole("dialog", { name: /entry detail/i });
     // Only the mobile dialog is rendered (lg:hidden suppresses on desktop in CSS,
@@ -347,8 +361,8 @@ describe("AppShell · entry interaction & history", () => {
     await renderWithEngine(<AppShell />);
     const input = screen.getByRole("textbox", { name: /search/i });
     await user.type(input, "speak");
-    await waitFor(() => screen.getByText("ပြော"));
-    await user.click(screen.getByText("ပြော"));
+    await waitFor(() => inResults("ပြော"));
+    await user.click(inResults("ပြော"));
 
     // Switch to the history tab — there are two TabBar buttons (mobile +
     // desktop sidebar both render in jsdom). Click the first.
@@ -363,8 +377,8 @@ describe("AppShell · entry interaction & history", () => {
     await renderWithEngine(<AppShell />);
     const input = screen.getByRole("textbox", { name: /search/i });
     await user.type(input, "speak");
-    await waitFor(() => screen.getByText("ပြော"));
-    await user.click(screen.getByText("ပြော"));
+    await waitFor(() => inResults("ပြော"));
+    await user.click(inResults("ပြော"));
 
     const saveBtns = await screen.findAllByRole("button", { name: /^save$/i });
     await user.click(saveBtns[0]);
@@ -384,8 +398,8 @@ describe("AppShell · entry interaction & history", () => {
     await renderWithEngine(<AppShell />);
     const input = screen.getByRole("textbox", { name: /search/i });
     await user.type(input, "speak");
-    await waitFor(() => screen.getByText("ပြော"));
-    await user.click(screen.getByText("ပြော"));
+    await waitFor(() => inResults("ပြော"));
+    await user.click(inResults("ပြော"));
 
     expect(
       (await screen.findAllByRole("dialog", { name: /entry detail/i })).length,
@@ -571,8 +585,8 @@ describe("AppShell · shareable URL", () => {
     await renderWithEngine(<AppShell />);
     const input = screen.getByRole("textbox", { name: /search/i });
     await user.type(input, "speak");
-    await waitFor(() => screen.getByText("ပြော"));
-    await user.click(screen.getByText("ပြော"));
+    await waitFor(() => inResults("ပြော"));
+    await user.click(inResults("ပြော"));
 
     // Mobile sheet + desktop rail both render in jsdom — click the first
     // "Share" button. The per-query share button is also on screen but

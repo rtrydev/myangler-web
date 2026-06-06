@@ -38,7 +38,7 @@ import {
 } from "@/app/lib/search";
 import { lookupForward, relatedFor } from "@/app/lib/lookup";
 import type { Entry } from "@/app/lib/lookup";
-import { dayNumber, pickWordOfTheDay } from "@/app/lib/app/wordOfTheDay";
+import { dayOfYear, pickWordOfTheDay } from "@/app/lib/app/wordOfTheDay";
 import { useEngineState } from "@/app/lib/app/engine-context";
 import { useFavorites, useHistory } from "@/app/lib/app/storage";
 import { usePreferences } from "@/app/lib/app/preferences";
@@ -219,7 +219,13 @@ function AppShellReady({
   }, [engine, selected]);
 
   useEffect(() => {
-    setWordOfDay(pickWordOfTheDay(engine.dictionary, dayNumber(new Date())));
+    setWordOfDay(
+      pickWordOfTheDay(
+        engine.dictionary,
+        engine.segmenter.unigram,
+        dayOfYear(new Date()),
+      ),
+    );
   }, [engine]);
 
   // Single setter for the search query. Clearing the field (via the X
