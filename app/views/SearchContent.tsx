@@ -17,18 +17,21 @@ import type {
   SearchResult,
 } from "@/app/lib/search";
 import { Chip } from "@/app/components/Chip";
-import { Eyebrow } from "@/app/components/Ornament";
+import { Eyebrow, Flourish } from "@/app/components/Ornament";
 import { Logo } from "@/app/components/Logo";
 import { Note } from "@/app/components/Card";
-import { OfflineIcon } from "@/app/components/Icon";
 import { ResultRow } from "@/app/components/ResultRow";
 import { WordBlock } from "@/app/components/WordBlock";
+import {
+  posCategory,
+  POS_CATEGORY_COLOR,
+  POS_CATEGORY_LABEL,
+  POS_CATEGORY_ORDER,
+} from "@/app/lib/app/pos";
 
 type SearchContentProps = {
   result: SearchResult;
   selectedEntryId?: number | null;
-  /** Total entries shipped — drives the "Ready offline · N entries" line. */
-  totalEntries?: number | null;
   onSelectToken?: (token: BreakdownToken) => void;
   onSelectRow?: (entry: Entry, row: ResultRowType) => void;
   onChip?: (sample: string) => void;
@@ -45,7 +48,6 @@ const SAMPLE_CHIPS = [
 export function SearchContent({
   result,
   selectedEntryId = null,
-  totalEntries = null,
   onSelectToken,
   onSelectRow,
   onChip,
@@ -65,9 +67,7 @@ export function SearchContent({
     );
   }
   if (result.kind === "unrecognized" || result.kind === "empty") {
-    return (
-      <IdleView totalEntries={totalEntries} onChip={onChip} />
-    );
+    return <IdleView onChip={onChip} />;
   }
   if (result.kind === "breakdown") {
     return (
@@ -92,83 +92,87 @@ export function SearchContent({
 
 /* ─────────────────────────── Idle ─────────────────────────── */
 
-function IdleView({
-  totalEntries,
-  onChip,
-}: {
-  totalEntries: number | null;
-  onChip?: (sample: string) => void;
-}) {
+function IdleView({ onChip }: { onChip?: (sample: string) => void }) {
   return (
     <div
-      className="flex-1 min-h-0 px-5 pt-2 pb-5 overflow-y-auto no-scroll paper-tex flex flex-col"
+      className="flex-1 min-h-0 overflow-y-auto no-scroll paper-tex"
       data-testid="idle-view"
     >
-      <div className="flex flex-col items-center pt-6 gap-4">
-        <Logo size={68} />
-        <div className="serif text-[26px] leading-tight text-center text-ink tracking-[0.005em]">
-          A pocket dictionary
-          <br />
-          <span className="italic text-ink-2">for Burmese &amp; English.</span>
-        </div>
-        <div className="mm text-lg text-gold mt-0.5">
-          မြန်မာ ⟷ အင်္ဂလိပ်
-        </div>
-      </div>
+      {/* `min-h-full` lets the column center its hero in tall viewports
+          while still growing (and scrolling) when content overflows a
+          short one. */}
+      <div className="min-h-full flex flex-col justify-center">
+        <div className="flex flex-col items-center w-full max-w-lg mx-auto px-6 py-10">
+          <Logo size={72} />
+          <div className="serif text-[27px] leading-tight text-center text-ink tracking-[0.005em] mt-4">
+            A pocket dictionary
+            <br />
+            <span className="italic text-ink-2">for Burmese &amp; English.</span>
+          </div>
+          <div className="mm text-lg text-gold-deep mt-1.5">
+            မြန်မာ ⟷ အင်္ဂလိပ်
+          </div>
+          <Flourish width={108} className="mt-4 opacity-70" />
 
-      <div className="mt-9">
-        <Eyebrow withRule>How to use</Eyebrow>
-        <ol className="flex flex-col gap-3.5 mt-2.5 list-none p-0 m-0">
-          {[
-            { num: "၁", en: "Type any word — Burmese or English. We figure out which." },
-            { num: "၂", en: "Paste a Burmese sentence. We split it into tappable blocks." },
-            { num: "၃", en: "No internet needed once installed to your home screen." },
-          ].map(s => (
-            <li key={s.num} className="flex gap-3.5 items-baseline">
-              <span className="mm text-[22px] text-gold min-w-[22px] text-center">
-                {s.num}
-              </span>
-              <span className="serif text-sm text-ink-2 leading-snug">{s.en}</span>
-            </li>
-          ))}
-        </ol>
-      </div>
+          <div className="mt-10 w-full">
+            <Eyebrow withRule>How to use</Eyebrow>
+            <ol className="flex flex-col gap-3 mt-3.5 list-none p-0 m-0">
+              {[
+                { num: "၁", en: "Type any word — Burmese or English. We figure out which." },
+                { num: "၂", en: "Paste a Burmese sentence. We split it into tappable blocks." },
+                { num: "၃", en: "No internet needed once installed to your home screen." },
+              ].map(s => (
+                <li key={s.num} className="flex gap-3.5 items-center">
+                  <span
+                    className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full mm text-[15px] text-gold-deep leading-none"
+                    style={{
+                      border:
+                        "1px solid color-mix(in oklab, var(--gold) 45%, transparent)",
+                      background:
+                        "color-mix(in oklab, var(--gold) 9%, transparent)",
+                    }}
+                    aria-hidden="true"
+                  >
+                    {s.num}
+                  </span>
+                  <span className="serif text-sm text-ink-2 leading-snug">
+                    {s.en}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
 
-      <div className="mt-8">
-        <Eyebrow withRule>Try</Eyebrow>
-        <div className="flex flex-wrap gap-2 mt-2.5">
-          {SAMPLE_CHIPS.map(sample => (
-            <Chip
-              key={sample}
-              role="button"
-              tabIndex={0}
-              onClick={() => onChip?.(sample)}
-              onKeyDown={e => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onChip?.(sample);
-                }
-              }}
-              className={/[A-Za-z]/.test(sample) ? "serif" : "mm"}
-              style={{
-                textTransform: "none",
-                letterSpacing: 0,
-                fontSize: 13,
-                padding: "6px 12px",
-                cursor: onChip ? "pointer" : "default",
-              }}
-            >
-              {sample}
-            </Chip>
-          ))}
+          <div className="mt-8 w-full">
+            <Eyebrow withRule>Try</Eyebrow>
+            <div className="flex flex-wrap gap-2 mt-3.5">
+              {SAMPLE_CHIPS.map(sample => (
+                <Chip
+                  key={sample}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onChip?.(sample)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onChip?.(sample);
+                    }
+                  }}
+                  className={/[A-Za-z]/.test(sample) ? "serif" : "mm"}
+                  style={{
+                    textTransform: "none",
+                    letterSpacing: 0,
+                    fontSize: 13,
+                    padding: "6px 12px",
+                    cursor: onChip ? "pointer" : "default",
+                  }}
+                >
+                  {sample}
+                </Chip>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div className="mt-auto pt-6 flex items-center gap-2 justify-center text-jade">
-        <OfflineIcon size={14} />
-        <span className="ui text-[11px] tracking-wide text-jade">
-          Ready offline{totalEntries ? ` · ${totalEntries.toLocaleString()} entries` : ""}
-        </span>
       </div>
     </div>
   );
@@ -190,6 +194,11 @@ function BreakdownView({
   const knownTokens = tokens.filter(t => t.result !== null);
   const wordCount = knownTokens.length;
   const isEnglish = script === "english";
+  // Categories actually present among matched tokens, in legend order —
+  // so the legend only advertises colors the user can see on screen.
+  const presentCategories = POS_CATEGORY_ORDER.filter(cat =>
+    knownTokens.some(t => posCategory(t.result!.entry.pos) === cat),
+  );
   // For Burmese the sentence preview reads naturally with no spaces
   // (the segmenter removed them at preprocess time). For English we
   // re-introduce a single space between display tokens so the user can
@@ -231,6 +240,7 @@ function BreakdownView({
             const secondary = isEnglish
               ? entry?.headword ?? "—"
               : entry?.glosses[0] ?? "—";
+            const category = entry ? posCategory(entry.pos) : undefined;
             const isSelected =
               !!entry && selectedEntryId !== null && entry.entryId === selectedEntryId;
             return (
@@ -239,6 +249,7 @@ function BreakdownView({
                 mm={isEnglish ? secondary : token.token}
                 en={isEnglish ? token.token : secondary}
                 primary={isEnglish ? "en" : "mm"}
+                category={category}
                 selected={isSelected}
                 unknown={token.result === null}
                 role="button"
@@ -260,6 +271,27 @@ function BreakdownView({
             );
           })}
         </div>
+
+        {presentCategories.length > 1 && (
+          <div
+            className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3.5"
+            data-testid="pos-legend"
+            aria-label="Part-of-speech legend"
+          >
+            {presentCategories.map(cat => (
+              <span key={cat} className="inline-flex items-center gap-1.5">
+                <span
+                  className="w-3 h-[2px] rounded-full"
+                  style={{ background: POS_CATEGORY_COLOR[cat] }}
+                  aria-hidden="true"
+                />
+                <span className="ui text-[10px] tracking-[0.12em] uppercase text-ink-3">
+                  {POS_CATEGORY_LABEL[cat]}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="mt-5">
           <Note label="Note">
@@ -372,7 +404,7 @@ function ResultsView({
         })}
       </div>
       <div className="px-4 pt-4 pb-6 text-center">
-        <div className="serif italic text-[12px] text-ink-faint leading-snug">
+        <div className="serif italic text-[12px] text-ink-3 leading-snug">
           Top results only. Narrow your search to find more.
         </div>
       </div>

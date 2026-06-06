@@ -35,7 +35,7 @@ export function SettingsView({
           <h2 className="serif text-[28px] leading-tight text-ink tracking-tight -ml-[3px]">
             Preferences
           </h2>
-          <div className="mm text-sm text-gold mt-1.5 leading-snug">ဆက်တင်</div>
+          <div className="mm text-sm text-gold-deep mt-1.5 leading-snug">ဆက်တင်</div>
         </div>
         {onClose && (
           <Button
@@ -92,7 +92,7 @@ function DataSources() {
           href="https://huggingface.co/datasets/chuuhtetnaing/english-myanmar-dictionary-dataset-EngMyanDictionary"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-gold underline decoration-gold/50 underline-offset-2 hover:decoration-gold"
+          className="text-gold-deep underline decoration-gold-deep/50 underline-offset-2 hover:decoration-gold-deep"
         >
           chuuhtetnaing HuggingFace dataset
         </a>
@@ -101,7 +101,7 @@ function DataSources() {
           href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-gold underline decoration-gold/50 underline-offset-2 hover:decoration-gold"
+          className="text-gold-deep underline decoration-gold-deep/50 underline-offset-2 hover:decoration-gold-deep"
         >
           GPL-2.0
         </a>
@@ -113,7 +113,7 @@ function DataSources() {
           href="https://github.com/ye-kyaw-thu/myWord"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-gold underline decoration-gold/50 underline-offset-2 hover:decoration-gold"
+          className="text-gold-deep underline decoration-gold-deep/50 underline-offset-2 hover:decoration-gold-deep"
         >
           myWord
         </a>{" "}
@@ -138,7 +138,7 @@ function SettingsRow({
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
         <div className="serif text-[17px] text-ink leading-snug">{label}</div>
-        <div className="mm text-[12px] text-gold mt-0.5 leading-snug">{mm}</div>
+        <div className="mm text-[12px] text-gold-deep mt-0.5 leading-snug">{mm}</div>
         <div className="serif italic text-[12.5px] text-ink-3 mt-1 leading-snug">
           {description}
         </div>

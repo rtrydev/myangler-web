@@ -313,7 +313,9 @@ describe("AppShell · search idle → results", () => {
   test("clicking a sample chip seeds the query", async () => {
     const user = userEvent.setup();
     await renderWithEngine(<AppShell />);
-    await user.click(screen.getByText("water"));
+    // The TRY chip is a role=button; query by role so it's unambiguous
+    // against the (plain-text) "water" gloss in the word-of-the-day rail.
+    await user.click(screen.getByRole("button", { name: "water" }));
     const input = screen.getByRole("textbox", { name: /search/i }) as HTMLInputElement;
     expect(input.value).toBe("water");
   });
@@ -530,9 +532,34 @@ describe("AppShell · shareable URL", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/link copied/i);
   });
 
-  test("the share button is hidden when the query is empty", async () => {
+  test("the share button is present but disabled when the query is empty", async () => {
+    // Kept mounted (disabled) so the input doesn't jump when typing starts.
     await renderWithEngine(<AppShell />);
-    expect(screen.queryByTestId("share-query")).not.toBeInTheDocument();
+    expect(screen.getByTestId("share-query")).toBeDisabled();
+  });
+
+  test("Copy all copies a text rendering of the current results and toasts", async () => {
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+
+    await renderWithEngine(<AppShell />);
+    const input = screen.getByRole("textbox", { name: /search/i });
+    await user.type(input, "speak");
+    await waitFor(() => screen.getByTestId("results-view"));
+
+    await user.click(await screen.findByTestId("copy-all"));
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    // ပြော → "speak" is in the fixture; the copied text lists it.
+    expect(writeText.mock.calls[0][0] as string).toContain("ပြော");
+    expect(await screen.findByRole("status")).toHaveTextContent(/copied/i);
+  });
+
+  test("Copy all is present but disabled when the query is empty", async () => {
+    await renderWithEngine(<AppShell />);
+    expect(screen.getByTestId("copy-all")).toBeDisabled();
   });
 
   test("the EntryDetail share button copies a URL whose q is the entry headword", async () => {

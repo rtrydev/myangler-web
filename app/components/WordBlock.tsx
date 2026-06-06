@@ -1,4 +1,5 @@
 import type { HTMLAttributes } from "react";
+import type { PosCategory } from "@/app/lib/app/pos";
 
 type WordBlockProps = HTMLAttributes<HTMLDivElement> & {
   mm: string;
@@ -10,6 +11,9 @@ type WordBlockProps = HTMLAttributes<HTMLDivElement> & {
    *  gloss italic below). Pass `"en"` for English-breakdown tiles
    *  (English source large on top, Burmese translation below). */
   primary?: "mm" | "en";
+  /** Part-of-speech category — keys the tile's bottom-border hue. Omit
+   *  (or pass with `unknown`) to use the default gold border. */
+  category?: PosCategory;
 };
 
 export function WordBlock({
@@ -18,6 +22,7 @@ export function WordBlock({
   selected,
   unknown,
   primary = "mm",
+  category,
   className = "",
   ...rest
 }: WordBlockProps) {
@@ -27,6 +32,9 @@ export function WordBlock({
     primary === "en" ? "en-primary" : "",
     selected ? "selected" : "",
     unknown ? "unknown" : "",
+    // Color coding only applies to known tiles; unknown tiles keep their
+    // dashed faint border as the "no match" signal.
+    !unknown && category ? `pos-${category}` : "",
     className,
   ].filter(Boolean).join(" ");
   if (primary === "en") {

@@ -7,8 +7,14 @@ import { Chip } from "../components/Chip";
 import { Button } from "../components/Button";
 import { SearchInput } from "../components/SearchInput";
 import { WordBlock } from "../components/WordBlock";
+import { WordOfTheDay } from "../components/WordOfTheDay";
 import { ResultRow } from "../components/ResultRow";
 import { Card, Note } from "../components/Card";
+import {
+  POS_CATEGORY_COLOR,
+  POS_CATEGORY_LABEL,
+  POS_CATEGORY_ORDER,
+} from "../lib/app/pos";
 import { Toast } from "../components/Toast";
 import { Eyebrow, RuleGold, Ornament, Flourish } from "../components/Ornament";
 import { TabBar } from "../components/TabBar";
@@ -64,10 +70,11 @@ const COLOR_TOKENS = [
   { name: "surface-2", desc: "Subtle fill" },
   { name: "ink", desc: "Primary text" },
   { name: "ink-2", desc: "Body text" },
-  { name: "ink-3", desc: "Muted text" },
-  { name: "ink-faint", desc: "Faint text" },
-  { name: "gold", desc: "Saffron accent" },
+  { name: "ink-3", desc: "Muted text (AA)" },
+  { name: "ink-faint", desc: "Decorative / non-text" },
+  { name: "gold", desc: "Saffron accent (fills)" },
   { name: "gold-soft", desc: "Soft gold" },
+  { name: "gold-deep", desc: "Gold text (AA)" },
   { name: "ruby", desc: "Lacquer primary" },
   { name: "ruby-soft", desc: "Soft ruby" },
   { name: "jade", desc: "Success / offline" },
@@ -116,7 +123,7 @@ export default function Page() {
             Parchment ivory, saffron gold, ruby lacquer — a warm reading
             surface tuned for a pocket Burmese ↔ English dictionary.
           </p>
-          <div className="mm text-xl text-gold">မြန်မာ ⟷ အင်္ဂလိပ်</div>
+          <div className="mm text-xl text-gold-deep">မြန်မာ ⟷ အင်္ဂလိပ်</div>
         </section>
 
         {/* ─── Colors ─── */}
@@ -277,6 +284,34 @@ export default function Page() {
               <WordBlock primary="en" en="zzz" mm="—" unknown />
             </div>
           </Card>
+
+          {/* Part-of-speech color coding: the bottom-border hue keys each
+              tile to a grammatical category (accent-proof tokens). */}
+          <Card className="mt-4 p-6 space-y-4">
+            <div className="serif italic text-sm text-ink-3">
+              Bottom-border hue keys each tile to a part-of-speech category.
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <WordBlock mm="ကျောင်း" en="school" category="noun" />
+              <WordBlock mm="စား" en="eat" category="verb" />
+              <WordBlock mm="ကောင်း" en="good" category="modifier" />
+              <WordBlock mm="က" en="particle" category="other" />
+              <WordBlock mm="??" en="unknown" unknown />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              {POS_CATEGORY_ORDER.map(cat => (
+                <span key={cat} className="inline-flex items-center gap-1.5">
+                  <span
+                    className="w-3 h-[2px] rounded-full"
+                    style={{ background: POS_CATEGORY_COLOR[cat] }}
+                  />
+                  <span className="ui text-[10px] tracking-[0.12em] uppercase text-ink-3">
+                    {POS_CATEGORY_LABEL[cat]}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </Card>
         </section>
 
         {/* ─── Result rows ─── */}
@@ -372,6 +407,27 @@ export default function Page() {
                 Open the sheet to preview the bottom-sheet treatment.
               </div>
             )}
+          </div>
+        </section>
+
+        {/* ─── Word of the day ─── */}
+        <section>
+          <Eyebrow withRule>Word of the day</Eyebrow>
+          <div className="mt-6 grid md:grid-cols-2 gap-6">
+            <Card className="overflow-hidden h-120">
+              <WordOfTheDay entry={SAMPLE_ENTRY} onOpen={() => {}} />
+            </Card>
+            <Card className="p-6 flex flex-col gap-4">
+              <Eyebrow gold>Idle detail rail</Eyebrow>
+              <p className="serif italic text-ink-3 text-sm">
+                Fills the desktop detail rail when nothing is selected, so
+                the rail carries a featured entry instead of sitting empty.
+                A deterministic daily pick (see{" "}
+                <code className="mono">lib/app/wordOfTheDay</code>); the{" "}
+                <code className="mono">See full entry</code> CTA hands off to
+                the normal selected-entry flow.
+              </p>
+            </Card>
           </div>
         </section>
 
@@ -513,13 +569,6 @@ export default function Page() {
               <div className="serif text-sm text-ink-3 italic">
                 Manuscript flourish — used in the mobile header
               </div>
-            </Card>
-            <Card className="p-6 flex flex-col items-center justify-center gap-2 min-h-30 md:col-span-2">
-              <div className="flex items-center gap-2 text-jade">
-                <OfflineIcon size={14} />
-                <span className="ui text-[11px] tracking-wider text-jade">Ready offline · 38,412 entries</span>
-              </div>
-              <div className="serif text-sm text-ink-3 italic">Offline / status pill</div>
             </Card>
           </div>
         </section>

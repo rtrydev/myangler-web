@@ -100,7 +100,7 @@ function Header({ onClose }: { onClose: () => void }) {
         <h2 className="serif text-[28px] leading-tight text-ink tracking-tight -ml-[3px]">
           Add to Home Screen
         </h2>
-        <div className="mm text-sm text-gold mt-1.5 leading-snug">
+        <div className="mm text-sm text-gold-deep mt-1.5 leading-snug">
           ပင်မမျက်နှာပြင်သို့ ထည့်ပါ
         </div>
       </div>
@@ -259,7 +259,7 @@ function StepsList({
     >
       {steps.map(s => (
         <li key={s.num} className="flex gap-3.5 items-baseline">
-          <span className="mm text-[22px] text-gold min-w-[22px] text-center">
+          <span className="mm text-[22px] text-gold-deep min-w-[22px] text-center">
             {s.num}
           </span>
           <span className="serif text-sm text-ink-2 leading-snug">

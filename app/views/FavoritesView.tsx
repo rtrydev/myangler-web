@@ -42,7 +42,7 @@ export function FavoritesView({ items, onSelect, onRemove }: FavoritesViewProps)
           <h2 className="serif text-[28px] leading-tight text-ink tracking-tight -ml-[3px]">
             Saved
           </h2>
-          <div className="mm text-sm text-gold mt-1.5 leading-snug">သိမ်းဆည်းထားသော</div>
+          <div className="mm text-sm text-gold-deep mt-1.5 leading-snug">သိမ်းဆည်းထားသော</div>
         </div>
         {/* Matches the History tab's Clear button anchor: `items-center`
             on the row + `p-2 leading-none` here puts the count in the

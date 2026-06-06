@@ -13,15 +13,20 @@
   --surface-2: #F6ECD4;
   --ink: #241509;
   --ink-2: #5A4329;
-  --ink-3: #8A7250;
+  --ink-3: #7A6038;
   --ink-faint: #B8A682;
   --gold: #B07820;
   --gold-soft: #D9A94A;
+  /* Text-safe gold for use on light surfaces. `--gold` is reserved for
+     decorative/UI fills (rules, ornaments, focus rings, active states)
+     where 3:1 suffices; gold-as-text needs AA, so point readable gold
+     text (eyebrows, links, glosses) at this instead. */
+  --gold-deep: #8A5A12;
   --ruby: #8A2727;
   --ruby-soft: #B14545;
   --jade: #4F6B4D;
-  --border: rgba(36, 21, 9, 0.10);
-  --border-2: rgba(36, 21, 9, 0.16);
+  --border: rgba(36, 21, 9, 0.14);
+  --border-2: rgba(36, 21, 9, 0.22);
   --shadow: 0 1px 2px rgba(36, 21, 9, 0.04), 0 8px 24px -8px rgba(36, 21, 9, 0.12);
   --shadow-lg: 0 2px 4px rgba(36, 21, 9, 0.06), 0 24px 48px -12px rgba(36, 21, 9, 0.22);
   --modal-dim: rgba(60, 40, 18, 0.36);
@@ -44,10 +49,13 @@
   --surface-2: #34281C;
   --ink: #EFE2C2;
   --ink-2: #C8B68C;
-  --ink-3: #948266;
+  --ink-3: #9E8B6E;
   --ink-faint: #5E513C;
   --gold: #D9A94A;
   --gold-soft: #E8C170;
+  /* Dark gold already clears AA as text (8.7:1 on --bg), so the
+     text-safe variant is just the regular gold here. */
+  --gold-deep: var(--gold);
   --ruby: #C75555;
   --ruby-soft: #D97777;
   --jade: #8AA786;
@@ -65,7 +73,7 @@
    primary hue. Must live on the SAME element as `.dark` so the dark +
    indigo combined rule below can match — `AppShell` puts both on
    `<html>` (`document.documentElement`). */
-[data-accent="gold"]    { --ruby: var(--gold);   --ruby-soft: var(--gold-soft); }
+[data-accent="gold"]    { --ruby: var(--gold-deep); --ruby-soft: var(--gold-soft); }
 [data-accent="jade"]    { --ruby: var(--jade);   --ruby-soft: var(--jade); }
 [data-accent="indigo"]  { --ruby: var(--swatch-indigo); --ruby-soft: #7079A8; }
 .dark[data-accent="indigo"] { --ruby: var(--swatch-indigo); --ruby-soft: #A8AED4; }
@@ -83,6 +91,7 @@
   --color-ink-faint: var(--ink-faint);
   --color-gold: var(--gold);
   --color-gold-soft: var(--gold-soft);
+  --color-gold-deep: var(--gold-deep);
   --color-ruby: var(--ruby);
   --color-ruby-soft: var(--ruby-soft);
   --color-jade: var(--jade);
@@ -198,10 +207,10 @@ body {
 .search-input {
   background: var(--surface);
   border: 1px solid var(--border-2);
-  border-radius: 8px;
-  padding: 14px 14px 14px 42px;
+  border-radius: 10px;
+  padding: 18px 18px 18px 52px;
   font-family: var(--font-spectral), serif;
-  font-size: 16px;
+  font-size: 19px;
   color: var(--ink);
   width: 100%;
   outline: none;
@@ -212,7 +221,7 @@ body {
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--gold) 18%, transparent);
 }
 .search-input::placeholder {
-  color: var(--ink-faint);
+  color: var(--ink-3);
   font-style: italic;
 }
 
@@ -278,6 +287,17 @@ body {
   text-align: center;
 }
 .wblock.unknown .w-mm-sub { color: var(--ink-faint); }
+
+/* Part-of-speech color coding. The bottom-border hue keys the tile to a
+   grammatical category so a sentence breakdown reads like a glossed
+   manuscript line. Declared AFTER `:hover` / `.selected` so the category
+   color persists across those states (which still convey feedback via
+   lift + surface fill + shadow). Hues come from accent-PROOF tokens so
+   the legend stays stable when the user remaps the accent. */
+.wblock.pos-noun     { border-bottom-color: var(--gold); }
+.wblock.pos-verb     { border-bottom-color: var(--swatch-ruby); }
+.wblock.pos-modifier { border-bottom-color: var(--jade); }
+.wblock.pos-other    { border-bottom-color: var(--ink-3); }
 
 /* ─────────────────────────────────────────────────────────────
    Result row
@@ -355,4 +375,4 @@ body {
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.eyebrow-gold { color: var(--gold); }
+.eyebrow-gold { color: var(--gold-deep); }

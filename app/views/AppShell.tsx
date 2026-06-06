@@ -15,13 +15,14 @@ import { SearchInput } from "@/app/components/SearchInput";
 import { TabBar, type TabItem } from "@/app/components/TabBar";
 import { Button } from "@/app/components/Button";
 import { EntryDetail } from "@/app/components/EntryDetail";
+import { WordOfTheDay } from "@/app/components/WordOfTheDay";
 import { Sheet } from "@/app/components/Sheet";
 import { Toast } from "@/app/components/Toast";
 import { Eyebrow, Flourish } from "@/app/components/Ornament";
 import {
   ClockIcon,
+  CopyIcon,
   DownloadIcon,
-  OfflineIcon,
   SearchIcon,
   SettingsIcon,
   ShareIcon,
@@ -33,9 +34,11 @@ import {
   detectScript,
   search as runSearch,
   type SearchEngine,
+  type SearchResult,
 } from "@/app/lib/search";
 import { lookupForward, relatedFor } from "@/app/lib/lookup";
 import type { Entry } from "@/app/lib/lookup";
+import { dayNumber, pickWordOfTheDay } from "@/app/lib/app/wordOfTheDay";
 import { useEngineState } from "@/app/lib/app/engine-context";
 import { useFavorites, useHistory } from "@/app/lib/app/storage";
 import { usePreferences } from "@/app/lib/app/preferences";
@@ -57,15 +60,78 @@ type Tab = "search" | "history" | "fav" | "settings";
 // `TabBar` via `MOBILE_TAB_ITEMS` so the user always has it at thumb's
 // reach without a hamburger menu.
 const TAB_ITEMS: TabItem[] = [
-  { id: "search", label: "Look up", icon: ({ size }) => <SearchIcon size={size} /> },
-  { id: "history", label: "History", icon: ({ size }) => <ClockIcon size={size} /> },
-  { id: "fav", label: "Saved", icon: ({ size }) => <StarIcon size={size} /> },
+  { id: "search", label: "Look up", mm: "ရှာဖွေ", icon: ({ size }) => <SearchIcon size={size} /> },
+  { id: "history", label: "History", mm: "သမိုင်း", icon: ({ size }) => <ClockIcon size={size} /> },
+  { id: "fav", label: "Saved", mm: "သိမ်းဆည်း", icon: ({ size }) => <StarIcon size={size} /> },
 ];
 
 const MOBILE_TAB_ITEMS: TabItem[] = [
   ...TAB_ITEMS,
-  { id: "settings", label: "Settings", icon: ({ size }) => <SettingsIcon size={size} /> },
+  { id: "settings", label: "Settings", mm: "ဆက်တင်", icon: ({ size }) => <SettingsIcon size={size} /> },
 ];
+
+// Starter words shown in the sidebar's "Recent" slot before the user has
+// any history, so the column reads as an invitation rather than a void.
+// English hints avoid collisions with the idle-view TRY chips (water /
+// thank you) so a fresh-load screen has no duplicated tappable text.
+const SIDEBAR_SUGGESTIONS: readonly { mm: string; en: string }[] = [
+  { mm: "ချစ်", en: "love" },
+  { mm: "ကောင်း", en: "good" },
+  { mm: "စား", en: "eat" },
+  { mm: "မိတ်ဆွေ", en: "friend" },
+];
+
+/** Plain-text rendering of the current result for the "Copy all" action.
+ *  A breakdown copies the sentence plus a `token — glosses` line per
+ *  block; a reverse list copies a `headwords — gloss` line per row; any
+ *  other state falls back to the raw query. */
+function resultToCopyText(result: SearchResult, query: string): string {
+  if (result.kind === "breakdown") {
+    const sentence = result.tokens
+      .map(t => t.token)
+      .join(result.script === "english" ? " " : "");
+    const lines = result.tokens.map(t => {
+      const entry = t.result?.entry;
+      return entry
+        ? `${t.token} — ${entry.glosses.slice(0, 3).join("; ")}`
+        : `${t.token} — (no match)`;
+    });
+    return [sentence, "", ...lines].join("\n");
+  }
+  if (result.kind === "reverse") {
+    return result.rows
+      .map(row => {
+        const heads = row.entries.map(e => e.headword).join(", ");
+        const gloss = row.entries[0]?.glosses[0] ?? row.key;
+        return `${heads} — ${gloss}`;
+      })
+      .join("\n");
+  }
+  return query.trim();
+}
+
+/** Short mode label for the search-bar breadcrumb (echoes the reference
+ *  dictionary's "Analysis" header). Reflects what the current input is
+ *  doing rather than a fixed title. */
+function lookupLabel(result: SearchResult): string {
+  if (result.kind === "breakdown") return "Analysis";
+  if (result.kind === "reverse") return "Results";
+  return "Look up";
+}
+
+/** Direction of the active lookup, e.g. "မြန်မာ → English", or null when
+ *  there's nothing to act on yet. */
+function lookupDirection(result: SearchResult): string | null {
+  const mmToEn = "မြန်မာ → English";
+  const enToMm = "English → မြန်မာ";
+  if (result.kind === "breakdown") {
+    return result.script === "english" ? enToMm : mmToEn;
+  }
+  if (result.kind === "reverse") {
+    return result.script === "latin" ? enToMm : mmToEn;
+  }
+  return null;
+}
 
 type AppShellProps = {
   /** Default starting tab — used by tests. */
@@ -98,6 +164,10 @@ function AppShellReady({
   const [modalOpen, setModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
+  // Featured word for the idle detail rail. Computed client-side after
+  // mount (so SSR and the first client render agree — the rail shows the
+  // placeholder until this fills) and stable for the whole day.
+  const [wordOfDay, setWordOfDay] = useState<Entry | null>(null);
   const history = useHistory();
   const favorites = useFavorites();
   const install = useInstallPrompt();
@@ -148,6 +218,10 @@ function AppShellReady({
     return relatedFor(engine.dictionary, selected);
   }, [engine, selected]);
 
+  useEffect(() => {
+    setWordOfDay(pickWordOfTheDay(engine.dictionary, dayNumber(new Date())));
+  }, [engine]);
+
   // Single setter for the search query. Clearing the field (via the X
   // button or by deleting all characters) must also drop the selected
   // entry so the desktop detail rail / mobile sheet return to the
@@ -184,6 +258,17 @@ function AppShellReady({
     setTab("search");
     setSelected(null);
     setModalOpen(false);
+  }
+
+  // Open the featured word: drive the query (so the main column shows its
+  // breakdown) and select it (so the rail shows the full entry), matching
+  // a normal result tap.
+  function handleSelectWordOfDay(entry: Entry) {
+    setQuery(entry.headword);
+    setTab("search");
+    setSelected(entry);
+    setModalOpen(true);
+    recordQuery(entry.headword);
   }
 
   function handleHistorySelect(item: HistoryItem) {
@@ -267,6 +352,15 @@ function AppShellReady({
     copyShareUrl(query);
   }
 
+  function handleCopyAll() {
+    const text = resultToCopyText(result, query);
+    if (!text) return;
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text);
+    }
+    setToast("Copied");
+  }
+
   function handleShareEntry() {
     if (!selected) return;
     copyShareUrl(selected.headword);
@@ -307,39 +401,68 @@ function AppShellReady({
                   aria-current={isActive ? "page" : undefined}
                 >
                   <Icon size={17} />
-                  <span>{it.label}</span>
+                  <span className="flex flex-col leading-tight">
+                    <span>{it.label}</span>
+                    {it.mm && (
+                      <span
+                        className="mm text-[10px] text-ink-3 leading-tight mt-0.5"
+                        aria-hidden="true"
+                      >
+                        {it.mm}
+                      </span>
+                    )}
+                  </span>
                 </button>
               );
             })}
           </nav>
 
           <div className="mt-5 px-5">
-            <Eyebrow>Recent</Eyebrow>
-            <ul className="mt-2.5 flex flex-col gap-2 list-none p-0 m-0">
-              {history.items.slice(0, 5).map(h => (
-                <li key={`${h.query}-${h.at}`}>
-                  <button
-                    type="button"
-                    onClick={() => handleHistorySelect(h)}
-                    className="w-full flex justify-between gap-2 items-baseline cursor-pointer text-left hover:text-ink"
-                  >
-                    <span
-                      className={`${h.kind === "latin" ? "serif" : "mm leading-[2.5]"} text-[13px] text-ink-2 overflow-hidden whitespace-nowrap text-ellipsis`}
+            <Eyebrow>{history.items.length === 0 ? "Try" : "Recent"}</Eyebrow>
+            {history.items.length === 0 ? (
+              <ul className="mt-2.5 flex flex-col gap-2 list-none p-0 m-0">
+                {SIDEBAR_SUGGESTIONS.map(s => (
+                  <li key={s.mm}>
+                    <button
+                      type="button"
+                      onClick={() => handleChip(s.mm)}
+                      className="w-full flex justify-between gap-2 items-baseline cursor-pointer text-left group"
                     >
-                      {h.query}
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {history.items.length === 0 && (
-                <li className="serif italic text-[12px] text-ink-faint">
-                  No recent searches.
-                </li>
-              )}
-            </ul>
+                      <span className="mm text-[13px] text-ink-2 leading-[2.5] group-hover:text-ink">
+                        {s.mm}
+                      </span>
+                      <span className="serif italic text-[11px] text-ink-3">
+                        {s.en}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="mt-2.5 flex flex-col gap-2 list-none p-0 m-0">
+                {history.items.slice(0, 5).map(h => (
+                  <li key={`${h.query}-${h.at}`}>
+                    <button
+                      type="button"
+                      onClick={() => handleHistorySelect(h)}
+                      className="w-full flex justify-between gap-2 items-baseline cursor-pointer text-left hover:text-ink"
+                    >
+                      <span
+                        className={`${h.kind === "latin" ? "serif" : "mm leading-[2.5]"} text-[13px] text-ink-2 overflow-hidden whitespace-nowrap text-ellipsis`}
+                      >
+                        {h.query}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className="mt-auto flex flex-col">
+            <div className="px-5 pt-2 pb-3 flex justify-center" aria-hidden="true">
+              <Flourish width={92} className="opacity-45" />
+            </div>
             <button
               type="button"
               onClick={() => setTab("settings")}
@@ -351,12 +474,16 @@ function AppShellReady({
               }`}
             >
               <SettingsIcon size={17} />
-              <span>Settings</span>
+              <span className="flex flex-col leading-tight">
+                <span>Settings</span>
+                <span
+                  className="mm text-[10px] text-ink-3 leading-tight mt-0.5"
+                  aria-hidden="true"
+                >
+                  ဆက်တင်
+                </span>
+              </span>
             </button>
-            <div className="px-5 py-3 flex items-center gap-2 text-jade">
-              <OfflineIcon size={13} />
-              <span className="ui text-[10.5px] text-jade">Offline ready</span>
-            </div>
           </div>
         </aside>
 
@@ -374,7 +501,7 @@ function AppShellReady({
                 onClick={() => setInstallOpen(true)}
                 aria-label="Add to Home Screen"
                 data-testid="header-install"
-                className="flex items-center gap-1.5 px-2 py-1.5 -mr-1 text-gold hover:text-gold-soft transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-2 py-1.5 -mr-1 text-gold-deep hover:text-gold transition-colors cursor-pointer"
               >
                 <DownloadIcon size={14} />
                 <span className="eyebrow eyebrow-gold">Install</span>
@@ -386,32 +513,60 @@ function AppShellReady({
             )}
           </div>
 
-          {/* Search input — only on the search tab */}
+          {/* Search input — only on the search tab. Full-width so its
+              left/right edges line up with the result/breakdown content
+              below; Share / Copy-all actions sit above it (shown once
+              there's a query, à la the reference dictionary's top bar). */}
           {tab === "search" && (
-            <div className="px-4 py-2.5 lg:px-8 lg:py-3.5 lg:border-b lg:border-border bg-bg">
-              <div className="lg:max-w-2xl flex items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <SearchInput
-                    aria-label="Search"
-                    placeholder="ရှာဖွေရန် · search a word or sentence"
-                    value={query}
-                    onChange={e => handleQueryChange(e.target.value)}
-                    onClear={() => handleQueryChange("")}
-                    autoFocus
-                  />
+            <div className="px-4 py-3 lg:py-4 lg:border-b lg:border-border bg-bg">
+              {/* Top bar: a contextual breadcrumb on the left (echoing the
+                  reference dictionary's "Analysis" header) and the Share /
+                  Copy-all actions on the right. Actions stay mounted
+                  (disabled until there's a query) so the input doesn't
+                  shift down the moment the user starts typing. */}
+              <div className="flex items-center justify-between gap-3 mb-2.5">
+                {/* `pl-2.5` matches the action buttons' own `px-2.5`, so
+                    the breadcrumb's inset from the box's left edge mirrors
+                    "Copy all"'s inset from the right edge — symmetric. */}
+                <div className="flex items-baseline gap-2 min-w-0 pl-2.5">
+                  <Eyebrow>{lookupLabel(result)}</Eyebrow>
+                  {lookupDirection(result) && (
+                    <span className="ui text-[10px] tracking-[0.1em] uppercase text-ink-3 truncate hidden sm:inline">
+                      · {lookupDirection(result)}
+                    </span>
+                  )}
                 </div>
-                {query.trim() !== "" && (
+                <div className="flex items-center gap-1 shrink-0">
                   <Button
-                    variant="icon"
+                    variant="ghost"
                     onClick={handleShareQuery}
+                    disabled={query.trim() === ""}
                     aria-label="Share search"
                     data-testid="share-query"
-                    className="h-13! w-13!"
+                    className="text-xs! px-2.5!"
                   >
-                    <ShareIcon size={16} />
+                    <ShareIcon size={15} /> Share
                   </Button>
-                )}
+                  <Button
+                    variant="ghost"
+                    onClick={handleCopyAll}
+                    disabled={query.trim() === ""}
+                    aria-label="Copy all results"
+                    data-testid="copy-all"
+                    className="text-xs! px-2.5!"
+                  >
+                    <CopyIcon size={15} /> Copy all
+                  </Button>
+                </div>
               </div>
+              <SearchInput
+                aria-label="Search"
+                placeholder="ရှာဖွေရန် · search a word or sentence"
+                value={query}
+                onChange={e => handleQueryChange(e.target.value)}
+                onClear={() => handleQueryChange("")}
+                autoFocus
+              />
             </div>
           )}
 
@@ -421,7 +576,6 @@ function AppShellReady({
               <SearchContent
                 result={result}
                 selectedEntryId={selected?.entryId ?? null}
-                totalEntries={null}
                 onSelectToken={t => t.result && openEntry(t.result.entry)}
                 onSelectRow={entry => openEntry(entry)}
                 onChip={handleChip}
@@ -517,6 +671,8 @@ function AppShellReady({
               onShare={handleShareEntry}
               onSelectRelated={r => setSelected(r)}
             />
+          ) : wordOfDay ? (
+            <WordOfTheDay entry={wordOfDay} onOpen={handleSelectWordOfDay} />
           ) : (
             <DetailRailPlaceholder />
           )}

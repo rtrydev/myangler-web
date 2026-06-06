@@ -17,12 +17,16 @@ describe("TabBar", () => {
     }
   });
 
-  test("the active tab is visually marked with the gold class", () => {
+  test("the active tab is visually marked distinctly from the inactive tabs", () => {
     render(<TabBar items={items} active="history" />);
     const history = screen.getByRole("button", { name: /history/i });
     const search = screen.getByRole("button", { name: /look up/i });
-    expect(history).toHaveClass("text-gold");
-    expect(search).not.toHaveClass("text-gold");
+    // Active is the AA-safe gold + a weight bump (so the state isn't
+    // conveyed by color alone); inactive tabs are muted ink.
+    expect(history).toHaveClass("text-gold-deep", "font-semibold");
+    expect(history).not.toHaveClass("text-ink-3");
+    expect(search).toHaveClass("text-ink-3");
+    expect(search).not.toHaveClass("text-gold-deep");
   });
 
   test("clicking a tab calls onChange with its id", async () => {

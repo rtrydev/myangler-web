@@ -73,4 +73,23 @@ describe("WordBlock", () => {
     expect(screen.getByText("ဒီနေ့")).toHaveClass("w-mm");
     expect(screen.getByText("today")).toHaveClass("w-en");
   });
+
+  test("a category applies the matching pos- class for color coding", () => {
+    render(<WordBlock mm="စား" en="eat" category="verb" data-testid="wb" />);
+    expect(screen.getByTestId("wb")).toHaveClass("wblock", "pos-verb");
+  });
+
+  test("unknown tiles suppress the category class (faint border wins)", () => {
+    render(
+      <WordBlock mm="??" en="unknown" category="noun" unknown data-testid="wb" />,
+    );
+    const el = screen.getByTestId("wb");
+    expect(el).toHaveClass("wblock", "unknown");
+    expect(el).not.toHaveClass("pos-noun");
+  });
+
+  test("no category leaves the default (gold) border — no pos- class", () => {
+    render(<WordBlock mm="ဒီနေ့" en="today" data-testid="wb" />);
+    expect(screen.getByTestId("wb").className).not.toMatch(/\bpos-/);
+  });
 });

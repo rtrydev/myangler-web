@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 export type TabItem = {
   id: string;
   label: string;
+  /** Optional Burmese sub-label. Rendered by the desktop sidebar's
+   *  bilingual nav; the mobile `TabBar` ignores it (no room). */
+  mm?: string;
   icon: (p: { size?: number }) => ReactNode;
 };
 
@@ -22,7 +25,7 @@ export function TabBar({ items, active, onChange }: TabBarProps) {
             type="button"
             key={it.id}
             onClick={() => onChange?.(it.id)}
-            className={`flex-1 pt-2.5 pb-5.5 flex flex-col items-center gap-1 cursor-pointer ui text-[10px] tracking-[0.06em] uppercase ${isActive ? "text-gold" : "text-ink-faint"}`}
+            className={`flex-1 pt-2.5 pb-5.5 flex flex-col items-center gap-1 cursor-pointer ui text-[10px] tracking-[0.06em] uppercase ${isActive ? "text-gold-deep font-semibold" : "text-ink-3"}`}
           >
             {it.icon({ size: 22 })}
             <span>{it.label}</span>

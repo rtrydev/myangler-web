@@ -45,7 +45,7 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
           <h2 className="serif text-[28px] leading-tight text-ink tracking-tight -ml-[3px]">
             History
           </h2>
-          <div className="mm text-sm text-gold mt-1.5 leading-snug">သမိုင်း</div>
+          <div className="mm text-sm text-gold-deep mt-1.5 leading-snug">သမိုင်း</div>
         </div>
         {items.length > 0 && onClear && (
           <Button
@@ -107,7 +107,7 @@ export function HistoryView({ items, onSelect, onClear }: HistoryViewProps) {
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="ui text-[10.5px] text-ink-faint">
+                      <span className="ui text-[10.5px] text-ink-3">
                         {relativeTime(item.at)}
                       </span>
                       {isSent && (

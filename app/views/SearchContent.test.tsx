@@ -128,11 +128,6 @@ describe("SearchContent · idle", () => {
     await user.click(screen.getByText("water"));
     expect(onChip).toHaveBeenCalledWith("water");
   });
-
-  test("renders the total-entries pill when totalEntries is supplied", () => {
-    render(<SearchContent result={empty} totalEntries={1234} />);
-    expect(screen.getByText(/1,234 entries/)).toBeInTheDocument();
-  });
 });
 
 describe("SearchContent · too long", () => {

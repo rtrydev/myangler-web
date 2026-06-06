@@ -23,7 +23,7 @@ export function Note({ label = "Note", className = "", children, ...rest }: Note
       className={`px-3 py-2.5 bg-surface-2 border-l-2 border-gold rounded-r ${className}`.trim()}
       {...rest}
     >
-      <div className="ui text-[10px] tracking-[0.14em] uppercase text-gold mb-1">{label}</div>
+      <div className="ui text-[10px] tracking-[0.14em] uppercase text-gold-deep mb-1">{label}</div>
       <div className="serif text-xs text-ink-2 leading-snug italic">{children}</div>
     </div>
   );

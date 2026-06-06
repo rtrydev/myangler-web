@@ -10,6 +10,7 @@
 import { Fragment } from "react";
 import type { Entry } from "@/app/lib/lookup";
 import { Button } from "./Button";
+import { Chip } from "./Chip";
 import {
   CloseIcon,
   CopyIcon,
@@ -60,18 +61,13 @@ export function EntryDetail({
           >
             {entry.headword}
           </div>
-          <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
+          <div className="flex items-center gap-2.5 mt-2 flex-wrap">
             {entry.ipa && (
-              <>
-                <span className="serif italic text-sm text-ink-3">
-                  /{entry.ipa}/
-                </span>
-                <span className="w-0.75 h-0.75 bg-ink-faint rounded-full" />
-              </>
+              <span className="serif italic text-sm text-ink-3">
+                /{entry.ipa}/
+              </span>
             )}
-            <span className="ui text-[11px] text-ink-3 tracking-wide">
-              {entry.pos}
-            </span>
+            {entry.pos && <Chip>{entry.pos}</Chip>}
           </div>
         </div>
         {onClose && (
@@ -91,11 +87,29 @@ export function EntryDetail({
       </div>
 
       <div className="px-5.5 pt-4 overflow-y-auto no-scroll flex-1 min-h-0">
-        <div className="eyebrow mb-2.5">Meanings</div>
-        <ol className="flex flex-col gap-3 list-none p-0 m-0" aria-label="Meanings">
+        <div className="flex items-center gap-1.5 mb-2.5">
+          <span
+            className="serif text-base text-gold-deep leading-none"
+            aria-hidden="true"
+          >
+            &#x231C;
+          </span>
+          <span className="eyebrow">Meanings</span>
+        </div>
+        {/* Soft gold left-rule brackets the senses like a glossed
+            manuscript column — the entry-view analog of the breakdown's
+            colored tile borders. */}
+        <ol
+          className="flex flex-col gap-3 list-none p-0 m-0 pl-4"
+          style={{
+            borderLeft:
+              "2px solid color-mix(in oklab, var(--gold) 40%, transparent)",
+          }}
+          aria-label="Meanings"
+        >
           {entry.glosses.map((gloss, i) => (
             <li key={i} className="flex gap-3.5 items-baseline">
-              <span className="serif text-sm text-gold min-w-3.5">{i + 1}.</span>
+              <span className="serif text-sm text-gold-deep min-w-3.5">{i + 1}.</span>
               <span className="serif text-[17px] text-ink">{gloss}</span>
             </li>
           ))}
@@ -104,7 +118,13 @@ export function EntryDetail({
         {related.length > 0 && (
           <div className="mt-5">
             <div className="eyebrow mb-2.5">Forms</div>
-            <ul className="flex flex-col list-none p-0 m-0">
+            <ul
+              className="flex flex-col list-none p-0 m-0 pl-4"
+              style={{
+                borderLeft:
+                  "2px solid color-mix(in oklab, var(--ink-3) 28%, transparent)",
+              }}
+            >
               {related.map((r, i) => (
                 <Fragment key={r.entryId}>
                   <li>

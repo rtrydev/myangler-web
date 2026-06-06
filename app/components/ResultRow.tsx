@@ -31,13 +31,13 @@ export function ResultRow({ mm, group, en, meaning, note, tag, className = "", .
           )) : (
             <span className="mm text-[20px] text-ink">{mm}</span>
           )}
-          <span className="serif italic text-sm text-gold">{en}</span>
+          <span className="serif italic text-sm text-gold-deep">{en}</span>
         </div>
         {meaning && (
           <div className="serif text-[12.5px] text-ink-3 mt-1 leading-snug">{meaning}</div>
         )}
         {note && (
-          <div className="serif text-[11px] text-ink-faint mt-1 italic">{note}</div>
+          <div className="serif text-[11px] text-ink-3 mt-1 italic">{note}</div>
         )}
       </div>
       <Chip variant={tag}>{tagLabel[tag]}</Chip>
