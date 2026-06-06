@@ -518,17 +518,15 @@ function AppShellReady({
               below; Share / Copy-all actions sit above it (shown once
               there's a query, à la the reference dictionary's top bar). */}
           {tab === "search" && (
-            <div className="px-4 py-3 lg:py-4 lg:border-b lg:border-border bg-bg">
-              {/* Top bar: a contextual breadcrumb on the left (echoing the
-                  reference dictionary's "Analysis" header) and the Share /
-                  Copy-all actions on the right. Actions stay mounted
-                  (disabled until there's a query) so the input doesn't
-                  shift down the moment the user starts typing. */}
-              <div className="flex items-center justify-between gap-3 mb-2.5">
-                {/* `pl-2.5` matches the action buttons' own `px-2.5`, so
-                    the breadcrumb's inset from the box's left edge mirrors
-                    "Copy all"'s inset from the right edge — symmetric. */}
-                <div className="flex items-baseline gap-2 min-w-0 pl-2.5">
+            <div className="py-3 lg:py-4 lg:border-b lg:border-border bg-bg">
+              {/* Header row uses `px-5.5` — the same padding as the
+                  History / Saved / Settings view headers — so "Look up"
+                  lines up with their "Recent" / "Library" eyebrows, and
+                  the Share / Copy-all actions sit where those views' header
+                  actions do. Actions stay mounted (disabled until there's a
+                  query) so the input doesn't shift down when typing starts. */}
+              <div className="px-5.5 flex items-center justify-between gap-3 mb-2.5">
+                <div className="flex items-baseline gap-2 min-w-0">
                   <Eyebrow>{lookupLabel(result)}</Eyebrow>
                   {lookupDirection(result) && (
                     <span className="ui text-[10px] tracking-[0.1em] uppercase text-ink-3 truncate hidden sm:inline">
@@ -559,14 +557,18 @@ function AppShellReady({
                   </Button>
                 </div>
               </div>
-              <SearchInput
-                aria-label="Search"
-                placeholder="ရှာဖွေရန် · search a word or sentence"
-                value={query}
-                onChange={e => handleQueryChange(e.target.value)}
-                onClear={() => handleQueryChange("")}
-                autoFocus
-              />
+              {/* Input stays at `px-4` so its edges line up with the
+                  breakdown / results content below it. */}
+              <div className="px-4">
+                <SearchInput
+                  aria-label="Search"
+                  placeholder="ရှာဖွေရန် · search a word or sentence"
+                  value={query}
+                  onChange={e => handleQueryChange(e.target.value)}
+                  onClear={() => handleQueryChange("")}
+                  autoFocus
+                />
+              </div>
             </div>
           )}
 
