@@ -388,6 +388,7 @@ function ResultsView({
               meaning={meaning}
               tag={tag}
               note={noteParts.length > 0 ? noteParts.join(" · ") : undefined}
+              selected={isSelected}
               role="button"
               tabIndex={0}
               aria-pressed={isSelected}

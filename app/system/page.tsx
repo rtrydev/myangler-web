@@ -323,11 +323,14 @@ export default function Page() {
               <span className="ui text-[11px] text-ink-faint">240 ms</span>
             </div>
             <div className="mt-3">
+              {/* `selected` marks the row currently shown in the detail
+                  rail — gold left rule + faint gold wash. */}
               <ResultRow
                 group={["ရေ"]}
                 en="water"
                 meaning="water; liquid; (poetic) river, sea"
                 tag="exact"
+                selected
               />
               <ResultRow
                 group={["ရေသန့်", "သောက်ရေ"]}

@@ -270,6 +270,28 @@ describe("SearchContent · results", () => {
     expect(onSelectRow).toHaveBeenCalledOnce();
   });
 
+  test("marks the currently-selected row via the selectedEntryId prop", () => {
+    render(
+      <SearchContent result={reverse} selectedEntryId={sampleEntry.entryId} />,
+    );
+    const row = screen.getByTestId(`result-row-${sampleEntry.entryId}`);
+    expect(row).toHaveClass("selected");
+    expect(row).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("a row that is not the selected entry stays unmarked", () => {
+    render(
+      <SearchContent result={reverse} selectedEntryId={sampleEntry.entryId} />,
+    );
+    // Every other row in the fixture must not carry the selected class.
+    const rows = screen.getAllByTestId(/^result-row-/);
+    const others = rows.filter(
+      r => r.getAttribute("data-testid") !== `result-row-${sampleEntry.entryId}`,
+    );
+    expect(others.length).toBeGreaterThan(0);
+    for (const r of others) expect(r).not.toHaveClass("selected");
+  });
+
   test("empty reverse result shows the no-matches view", () => {
     render(
       <SearchContent result={{ kind: "reverse", script: "latin", rows: [] }} />,

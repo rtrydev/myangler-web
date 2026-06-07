@@ -10,6 +10,11 @@ type ResultRowProps = HTMLAttributes<HTMLDivElement> & {
   meaning?: string;
   note?: string;
   tag: Tag;
+  /** Marks the row as the one currently shown in the detail rail / sheet.
+   *  Applies the gold "selected" treatment (left accent rule + faint gold
+   *  wash). The consumer still owns the `aria-pressed` state, mirroring
+   *  `WordBlock`. */
+  selected?: boolean;
 };
 
 const tagLabel: Record<Tag, string> = {
@@ -18,9 +23,12 @@ const tagLabel: Record<Tag, string> = {
   fuzzy: "close",
 };
 
-export function ResultRow({ mm, group, en, meaning, note, tag, className = "", ...rest }: ResultRowProps) {
+export function ResultRow({ mm, group, en, meaning, note, tag, selected = false, className = "", ...rest }: ResultRowProps) {
+  const classes = ["result-row", selected ? "selected" : "", className]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <div className={`result-row ${className}`.trim()} {...rest}>
+    <div className={classes} {...rest}>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 flex-wrap">
           {group ? group.map((g, i) => (

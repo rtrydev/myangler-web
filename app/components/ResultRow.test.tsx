@@ -60,6 +60,20 @@ describe("ResultRow", () => {
     expect(screen.getByText(label)).toHaveClass("chip", `tag-${tag}`);
   });
 
+  test("the selected prop applies the selected class", () => {
+    render(
+      <ResultRow mm="ရေ" en="water" tag="exact" selected data-testid="row" />,
+    );
+    expect(screen.getByTestId("row")).toHaveClass("result-row", "selected");
+  });
+
+  test("default state has no selected class", () => {
+    render(<ResultRow mm="ရေ" en="water" tag="exact" data-testid="row" />);
+    const el = screen.getByTestId("row");
+    expect(el).toHaveClass("result-row");
+    expect(el).not.toHaveClass("selected");
+  });
+
   test("fires onClick when activated", async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();

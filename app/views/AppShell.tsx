@@ -610,7 +610,7 @@ function AppShellReady({
             {tab === "search" && (
               <SearchContent
                 result={result}
-                selectedEntryId={selected?.entryId ?? null}
+                selectedEntryId={detailEntry?.entryId ?? null}
                 onSelectToken={t => t.result && openEntry(t.result.entry)}
                 onSelectRow={entry => openEntry(entry)}
                 onChip={handleChip}

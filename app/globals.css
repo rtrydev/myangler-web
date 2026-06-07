@@ -242,13 +242,12 @@ body {
   transition: all 0.15s;
 }
 .wblock:hover {
-  background: var(--surface);
-  border-bottom-color: var(--ruby);
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
   transform: translateY(-1px);
 }
 .wblock.selected {
-  background: var(--surface);
-  border-bottom-color: var(--ruby);
+  background: color-mix(in oklab, var(--gold) 14%, transparent);
+  border-color: color-mix(in oklab, var(--gold) 50%, var(--border));
   box-shadow: var(--shadow);
 }
 .wblock .w-mm {
@@ -291,9 +290,11 @@ body {
 /* Part-of-speech color coding. The bottom-border hue keys the tile to a
    grammatical category so a sentence breakdown reads like a glossed
    manuscript line. Declared AFTER `:hover` / `.selected` so the category
-   color persists across those states (which still convey feedback via
-   lift + surface fill + shadow). Hues come from accent-PROOF tokens so
-   the legend stays stable when the user remaps the accent. */
+   color persists across those states — the bottom edge always reports the
+   part of speech, while hover (lift + faint wash) and selection (gold
+   wash + gold side-border + shadow) layer on top. Hues come from
+   accent-PROOF tokens so the legend stays stable when the user remaps the
+   accent. */
 .wblock.pos-noun     { border-bottom-color: var(--gold); }
 .wblock.pos-verb     { border-bottom-color: var(--swatch-ruby); }
 .wblock.pos-modifier { border-bottom-color: var(--jade); }
@@ -309,8 +310,25 @@ body {
   display: flex; justify-content: space-between; align-items: flex-start;
   gap: 12px;
   cursor: pointer;
+  transition: background 0.12s ease;
 }
-.result-row:hover { background: var(--surface); }
+/* Subtle warm wash on hover — the same faint ink tint the ghost button
+   uses (4%). The old near-white `--surface` flashed cold against the
+   parchment list; this just shades the row enough to track the pointer. */
+.result-row:hover { background: color-mix(in oklab, var(--ink) 4%, transparent); }
+/* Selected row mirrors the desktop sidebar's active treatment exactly: a
+   gold left accent rule plus the same 14% gold wash the active nav item
+   uses, so the entry currently shown in the detail rail is unmistakable in
+   the list without darkening the row (more `--gold`, a dark brown-gold in
+   light mode, reads as *darker*, not brighter). The bar is an inset
+   box-shadow (not a border) so it never shifts the row's content. */
+.result-row.selected {
+  background: color-mix(in oklab, var(--gold) 14%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--gold);
+}
+.result-row.selected:hover {
+  background: color-mix(in oklab, var(--gold) 18%, transparent);
+}
 
 /* ─────────────────────────────────────────────────────────────
    Buttons
