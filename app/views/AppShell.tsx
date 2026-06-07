@@ -119,6 +119,24 @@ function lookupLabel(result: SearchResult): string {
   return "Look up";
 }
 
+/** The entry the detail rail should default to for the current lookup —
+ *  its top hit. A reverse list's first row, the first *matched* tile of a
+ *  breakdown, or `null` when the input produced nothing to show (empty /
+ *  unrecognized / every tile a miss). The rail follows this as the query
+ *  changes, so a fresh search replaces the previously-highlighted word
+ *  (or the idle word of the day) with its own top result. */
+function topResultEntry(result: SearchResult): Entry | null {
+  if (result.kind === "reverse") {
+    return result.rows[0]?.entries[0] ?? null;
+  }
+  if (result.kind === "breakdown") {
+    for (const token of result.tokens) {
+      if (token.result) return token.result.entry;
+    }
+  }
+  return null;
+}
+
 /** Direction of the active lookup, e.g. "မြန်မာ → English", or null when
  *  there's nothing to act on yet. */
 function lookupDirection(result: SearchResult): string | null {
@@ -208,15 +226,24 @@ function AppShellReady({
 
   const result = useMemo(() => runSearch(engine, query), [engine, query]);
 
-  // Anchor Forms to the *selected* entry, not whatever sense
+  // The detail rail follows the *current lookup*: an explicit selection
+  // (a tapped tile / row, the word of the day, a saved entry) wins;
+  // otherwise it shows the top hit of the active search. A fresh search
+  // clears `selected` (see `handleQueryChange`), so the rail switches to
+  // the new lookup's top result instead of lingering on the previously-
+  // highlighted word or the idle word of the day.
+  const topResult = useMemo(() => topResultEntry(result), [result]);
+  const detailEntry = selected ?? topResult;
+
+  // Anchor Forms to the *displayed* entry, not whatever sense
   // `lookupForward(headword)` happens to pick first. On polysemous
   // headwords (e.g. ကြိုက် verb "to like" vs conj "while") the two
   // senses' Forms must derive from their own glosses, otherwise one
   // sense's panel fills with peers gathered for the other sense.
   const related = useMemo<Entry[]>(() => {
-    if (!selected) return [];
-    return relatedFor(engine.dictionary, selected);
-  }, [engine, selected]);
+    if (!detailEntry) return [];
+    return relatedFor(engine.dictionary, detailEntry);
+  }, [engine, detailEntry]);
 
   useEffect(() => {
     setWordOfDay(
@@ -228,17 +255,16 @@ function AppShellReady({
     );
   }, [engine]);
 
-  // Single setter for the search query. Clearing the field (via the X
-  // button or by deleting all characters) must also drop the selected
-  // entry so the desktop detail rail / mobile sheet return to the
-  // empty placeholder — otherwise a stale entry stays visible with no
-  // query to anchor it to.
+  // Single setter for the search query. A fresh search supersedes any
+  // tile/row the user had open, so drop the explicit selection: the
+  // detail rail then follows the new lookup's top result, and clearing
+  // the field (via the X button or by deleting all characters) lets the
+  // rail / mobile sheet fall back to the idle word-of-the-day placeholder
+  // rather than leaving a stale entry with no query to anchor it to.
   function handleQueryChange(value: string) {
     setQuery(value);
-    if (value === "") {
-      setSelected(null);
-      setModalOpen(false);
-    }
+    setSelected(null);
+    if (value === "") setModalOpen(false);
   }
 
   function recordQuery(q: string) {
@@ -280,6 +306,7 @@ function AppShellReady({
   function handleHistorySelect(item: HistoryItem) {
     setQuery(item.query);
     setTab("search");
+    // No explicit selection — the rail follows the re-run query's top result.
     setSelected(null);
     setModalOpen(false);
   }
@@ -304,16 +331,16 @@ function AppShellReady({
   }
 
   function handleSaveToggle() {
-    if (!selected) return;
-    const wasSaved = favorites.isSaved(selected.entryId);
-    favorites.toggle(entryToFavorite(selected));
+    if (!detailEntry) return;
+    const wasSaved = favorites.isSaved(detailEntry.entryId);
+    favorites.toggle(entryToFavorite(detailEntry));
     setToast(wasSaved ? "Removed from saved" : "Saved");
   }
 
   function handleCopy() {
-    if (!selected) return;
+    if (!detailEntry) return;
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(selected.headword);
+      void navigator.clipboard.writeText(detailEntry.headword);
     }
     setToast("Copied");
   }
@@ -368,8 +395,8 @@ function AppShellReady({
   }
 
   function handleShareEntry() {
-    if (!selected) return;
-    copyShareUrl(selected.headword);
+    if (!detailEntry) return;
+    copyShareUrl(detailEntry.headword);
   }
 
   return (
@@ -669,11 +696,11 @@ function AppShellReady({
           aria-label="Entry detail"
           data-testid="detail-rail"
         >
-          {selected ? (
+          {detailEntry ? (
             <EntryDetail
-              entry={selected}
+              entry={detailEntry}
               related={related}
-              saved={favorites.isSaved(selected.entryId)}
+              saved={favorites.isSaved(detailEntry.entryId)}
               onSave={handleSaveToggle}
               onCopy={handleCopy}
               onShare={handleShareEntry}

@@ -195,14 +195,62 @@ export function singleWordSearch(
   }
 }
 
-/** Burmese (or mixed) path: segment the full input via the word
- *  segmenter, then dispatch by `segmented.length`.
+/** Upper bound, in segmenter tokens, on how long a run
+ *  {@link mergeMaxMatch} tries to recombine. Dictionary headwords are
+ *  short compounds; a handful of tokens covers every real multi-syllable
+ *  entry while keeping the per-keystroke scan negligible. */
+const MAX_MERGE_TOKENS = 8;
+
+/** Maximum-matching pass over the word segmenter's output.
  *
- *    - **1 segment** — a single Burmese block (a one-word input, or a
- *      sentence the segmenter collapsed to a single token). Route the
- *      *original* input through `searchBurmese` so the user sees the
- *      ranked single-word view (exact headword + syllable fuzzy),
- *      matching the Latin single-segment behavior.
+ *  The statistical segmenter is dictionary-blind: it occasionally splits a
+ *  compound the dictionary lists as a *single* entry into two higher-
+ *  scoring n-gram pieces (e.g. ``မြန်မာစကား`` "the Burmese language" →
+ *  ``မြန်မာ`` + ``စကား``). This pass walks the tokens left to right and,
+ *  at each position, greedily keeps the LONGEST run of adjacent tokens
+ *  that is itself a known headword — so a span that "could have been
+ *  matched directly into an entry" stays whole instead of fragmenting
+ *  into smaller tiles.
+ *
+ *  Only runs that are real headwords merge; a token with no longer
+ *  dictionary match is emitted unchanged, leaving genuinely-separate
+ *  words (and dictionary-absent particles) exactly as the segmenter
+ *  produced them. */
+function mergeMaxMatch(
+  model: DictionaryModel,
+  tokens: readonly string[],
+): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const limit = Math.min(tokens.length, i + MAX_MERGE_TOKENS);
+    let span = "";
+    let matchEnd = i; // exclusive end of the longest headword run from i
+    for (let j = i; j < limit; j++) {
+      span += tokens[j];
+      if (model.db.hasHeadword(span)) matchEnd = j + 1;
+    }
+    if (matchEnd > i + 1) {
+      out.push(tokens.slice(i, matchEnd).join(""));
+      i = matchEnd;
+    } else {
+      out.push(tokens[i]);
+      i += 1;
+    }
+  }
+  return out;
+}
+
+/** Burmese (or mixed) path: segment the full input via the word
+ *  segmenter, recombine over-split compounds via {@link mergeMaxMatch},
+ *  then dispatch by `segmented.length`.
+ *
+ *    - **1 segment** — a single Burmese block (a one-word input, a
+ *      sentence the segmenter collapsed to a single token, or a compound
+ *      the maximum-match pass merged back into one dictionary headword).
+ *      Route the *original* input through `searchBurmese` so the user
+ *      sees the ranked single-word view (exact headword + syllable
+ *      fuzzy), matching the Latin single-segment behavior.
  *
  *    - **≥ 2 segments** — sentence breakdown. Eagerly look up each
  *      token. Per-token *fuzzy* fallback (BK-tree near-matches) is
@@ -219,7 +267,10 @@ function burmesePath(
   input: string,
   mixedInput: boolean,
 ): SearchResult {
-  const segmented = segmentWords(engine.segmenter, input);
+  const segmented = mergeMaxMatch(
+    engine.dictionary,
+    segmentWords(engine.segmenter, input),
+  );
   if (segmented.length <= 1) {
     return {
       kind: "reverse",

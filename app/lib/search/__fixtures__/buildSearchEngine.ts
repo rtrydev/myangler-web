@@ -39,6 +39,12 @@ export const SEARCH_FIXTURE: FixtureEntry[] = [
   // breakdown, not reverse-lookup) needs a noun the segmenter can
   // attach to the article.
   { entryId: 6, headword: "ငါး", pos: "noun", glosses: ["fish"] },
+  // ပြောစကား — a compound the *statistical* segmenter splits into
+  // ["ပြော", "စကား"] (neither bigram nor unigram weights favor keeping
+  // it whole), yet it is a single dictionary entry. Exercises the
+  // maximum-match pass: the orchestrator must recombine the two pieces
+  // into this headword rather than show two smaller tiles.
+  { entryId: 7, headword: "ပြောစကား", pos: "noun", glosses: ["conversation"] },
 ];
 
 /** Construct a ready-to-query orchestrator engine using the shared

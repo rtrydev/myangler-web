@@ -335,6 +335,70 @@ describe("AppShell · search idle → results", () => {
   });
 });
 
+describe("AppShell · detail rail follows the lookup", () => {
+  test("the desktop rail shows the new lookup's top result, not the word of the day", async () => {
+    const user = userEvent.setup();
+    await renderWithEngine(<AppShell />);
+    const rail = screen.getByTestId("detail-rail");
+    const input = screen.getByRole("textbox", { name: /search/i });
+
+    await user.type(input, "speak");
+    // ပြော is the top reverse-lookup hit for "speak" (entryId 2); the rail
+    // surfaces it without the user having to tap a result row.
+    await waitFor(() =>
+      expect(within(rail).getByTestId("entry-headword")).toHaveTextContent(
+        "ပြော",
+      ),
+    );
+  });
+
+  test("a new search replaces the previously-highlighted word in the rail", async () => {
+    const user = userEvent.setup();
+    await renderWithEngine(<AppShell />);
+    const rail = screen.getByTestId("detail-rail");
+    const input = screen.getByRole("textbox", { name: /search/i });
+
+    // Tap a result row to pin an explicit selection in the rail.
+    await user.type(input, "speak");
+    await waitFor(() => inResults("ပြော"));
+    await user.click(inResults("ပြော"));
+    await waitFor(() =>
+      expect(within(rail).getByTestId("entry-headword")).toHaveTextContent(
+        "ပြော",
+      ),
+    );
+
+    // Running a different search must switch the rail to the new top
+    // result rather than keeping the tapped entry.
+    await user.clear(input);
+    await user.type(input, "water");
+    await waitFor(() =>
+      expect(within(rail).getByTestId("entry-headword")).toHaveTextContent(
+        "ရေ",
+      ),
+    );
+  });
+
+  test("clearing the query returns the rail to the idle word-of-the-day card", async () => {
+    const user = userEvent.setup();
+    await renderWithEngine(<AppShell />);
+    const rail = screen.getByTestId("detail-rail");
+    const input = screen.getByRole("textbox", { name: /search/i });
+
+    await user.type(input, "speak");
+    await waitFor(() =>
+      expect(within(rail).queryByTestId("entry-headword")).toBeInTheDocument(),
+    );
+
+    await user.clear(input);
+    // With no active query the rail falls back to the featured word — the
+    // standalone "word of the day" card, not a live-lookup EntryDetail.
+    await waitFor(() =>
+      expect(within(rail).getByTestId("word-of-the-day")).toBeInTheDocument(),
+    );
+  });
+});
+
 describe("AppShell · entry interaction & history", () => {
   test("clicking a result row opens the entry sheet with the headword, IPA-or-POS, and glosses", async () => {
     const user = userEvent.setup();

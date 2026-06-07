@@ -101,6 +101,44 @@ describe("search — Burmese path (segment + eager exact forward-lookup)", () =>
     expect(miss.result).toBeNull();
   });
 
+  test("maximum-match: an over-split compound that IS a headword collapses to the single-word reverse view", () => {
+    // The statistical segmenter splits ``ပြောစကား`` into ["ပြော", "စကား"]
+    // (both are higher-scoring on their own), but the fixture lists
+    // ``ပြောစကား`` as one entry. The maximum-match pass must recombine the
+    // two pieces, so the whole input resolves to a single block and routes
+    // to the ranked reverse view — the user sees the compound's entry, not
+    // two smaller tiles.
+    const result = search(engine, "ပြောစကား");
+    expect(result.kind).toBe("reverse");
+    if (result.kind !== "reverse") throw new Error("unreachable");
+    expect(result.script).toBe("burmese");
+    const ids = result.rows.flatMap((r) => r.entries.map((e) => e.entryId));
+    expect(ids).toContain(7);
+  });
+
+  test("maximum-match: a merged compound stays one tile inside a longer breakdown", () => {
+    // ``ပြောစကားက`` segments to ["ပြော", "စကား", "က"]. The first two pieces
+    // recombine into the headword ``ပြောစကား``; the trailing particle ``က``
+    // (not a fixture headword) stays separate — so the breakdown carries the
+    // compound as a *single* matched tile rather than splitting it.
+    const result = search(engine, "ပြောစကားက");
+    expect(result.kind).toBe("breakdown");
+    if (result.kind !== "breakdown") throw new Error("unreachable");
+    expect(result.tokens.map((t) => t.token)).toEqual(["ပြောစကား", "က"]);
+    expect(result.tokens[0].result?.entry.entryId).toBe(7);
+    expect(result.tokens[1].result).toBeNull();
+  });
+
+  test("maximum-match only fires for real headwords — genuinely separate words still split", () => {
+    // ``မြန်မာစကား`` segments to ["မြန်မာ", "စကား"]. The concatenation is
+    // NOT a fixture headword, so the maximum-match pass leaves the two
+    // distinct words alone and the breakdown keeps both tiles.
+    const result = search(engine, "မြန်မာစကား");
+    expect(result.kind).toBe("breakdown");
+    if (result.kind !== "breakdown") throw new Error("unreachable");
+    expect(result.tokens.map((t) => t.token)).toEqual(["မြန်မာ", "စကား"]);
+  });
+
   test("mixed input is treated as Burmese and carries mixedInput: true", () => {
     const result = search(engine, "မြန်မာ test");
     expect(result.kind).toBe("breakdown");

@@ -120,6 +120,21 @@ export class DictionaryDB {
     ).map(rowToEntry);
   }
 
+  /** Existence check for an exact headword. Cheaper than
+   *  {@link entriesByHeadword} when the caller only needs to know whether
+   *  a string is a known headword — it selects a literal and parses no
+   *  entry rows. Used by the orchestrator's maximum-match pass to decide
+   *  whether a run of adjacent segmenter tokens recombines into a single
+   *  dictionary entry. */
+  hasHeadword(headword: string): boolean {
+    return (
+      this.all(
+        "SELECT 1 FROM entries WHERE headword = ? LIMIT 1",
+        [headword],
+      ).length > 0
+    );
+  }
+
   /** Every distinct headword in the dictionary. Used by the "word of the
    *  day" picker to intersect the corpus-frequency table (which contains
    *  particles, punctuation, and inflected forms that are *not* dictionary
